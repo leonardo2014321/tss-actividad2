@@ -6,8 +6,8 @@
 <main>
 <!-- Introducción, origen de los datos y descargas -->
 <div class="intro">
-<h2>Resultados de la encuesta, listos para el informe</h2>
-<p>Cada sección corresponde a un apartado del documento de Análisis de Mercado (ARCUSUR). Todos los gráficos muestran el porcentaje y la cantidad de respuestas, y debajo traen una lectura en palabras.</p>
+<h2>Resultados de la encuesta</h2>
+<p>Todos los gráficos muestran el porcentaje y la cantidad de respuestas, y debajo traen una lectura en palabras.</p>
 <div class="controls">
 <div class="seg-ctl" role="group" aria-label="Datos a analizar"><button type="button" data-f="reales" aria-pressed="true">Datos reales</button><button type="button" data-f="demo" aria-pressed="false">Demostración</button><button type="button" data-f="todos" aria-pressed="false">Todos</button></div>
 <button type="button" id="demo">Cargar datos de demostración</button><button type="button" class="sec-b" id="borrar">Borrar datos de demostración</button>
@@ -22,7 +22,7 @@
 </div>
 <div id="app"></div>
 <!-- Simulador Monte Carlo: compara el escenario base con el escenario con becas (fuera de #app para conservar los valores escritos) -->
-<section class="sec" id="simulacion"><p class="eyebrow">Producto final · escenarios de decisión</p><h2>¿Se abriría el programa? Escenarios de simulación</h2>
+<section class="sec" id="simulacion"><p class="eyebrow">Escenarios de decisión</p><h2>¿Se abriría el programa? Escenarios de simulación</h2>
 <p class="lead">Cada titulado potencial se inscribe con probabilidad igual a <i>interés × inscripción</i>. Se repite el experimento 5 000 veces y se cuenta en cuántas se alcanza el mínimo de inscritos. Los valores iniciales son de ejemplo: reemplácelos con los de su análisis.</p>
 <form class="sim" id="sim"><div class="campos">
 <label>Titulados potenciales<input id="pob" type="number" value="300" min="1"></label>
@@ -104,7 +104,7 @@ function lecDist(d,multi){if(!d||!d.total)return"";const[a,b]=orden(d);
 if(!multi&&b&&a.n===b.n)return`Hay empate entre «${esc(corto(a.opcion))}» y «${esc(corto(b.opcion))}» (${num(a.pct)} % cada una).`;
 return multi?`La más mencionada es «${esc(corto(a.opcion))}» (${num(a.pct)} % de quienes respondieron)`+(b?`, después «${esc(corto(b.opcion))}» (${num(b.pct)} %).`:"."):
 `Predomina «${esc(corto(a.opcion))}» (${num(a.pct)} %)`+(b?`, seguida de «${esc(corto(b.opcion))}» (${num(b.pct)} %).`:".")}
-// Criterio de la guía: si dos áreas concentran más del 70 % de las preferencias, se justifica abrir programas modulares o híbridos.
+// Regla práctica: si dos áreas concentran más del 70 % de las preferencias, se justifica abrir programas modulares o híbridos.
 function lecArea(d){if(!d||!d.total)return"";const t=orden(d).slice(0,2),s=t.reduce((x,f)=>x+f.pct,0),nom=t.map(f=>`«${esc(f.opcion)}»`).join(" y ");
 return`${nom} concentran el ${num(s)} % de las preferencias. `+(s>70?"Supera el 70 %: hay una concentración clara que respalda abrir programas modulares o híbridos en esas áreas.":"No llega al 70 %: la demanda está repartida entre varias áreas y conviene una oferta más variada.")}
 function lecAnios(a,j,c){const tot=j+c;let t=`En promedio llevan ${num(a.media)} años de vida profesional (mediana ${num(a.mediana)}; desviación estándar ${num(a.sd)}). El ${num(j*100/tot,0)} % son junior (hasta 3 años) y el ${num(c*100/tot,0)} % consolidados.`;
@@ -133,19 +133,19 @@ const dup=q.duplicadosTitulados+q.duplicadosEmpleadores;
 const fila=(v,t,d,rev)=>`<tr class="${rev&&v>0?"rev":""}"><td>${v}</td><td><b>${t}</b><small>${d}</small></td></tr>`;
 const kp=`<div class="grid kpis">${kpi(s.nTitulados,"titulados encuestados",s.nTitulados?`Margen de error referencial ± ${num(m.margenTitulados)} puntos`:"")}${kpi(s.nEmpleadores,"empleadores encuestados",s.nEmpleadores?`Margen de error referencial ± ${num(m.margenEmpleadores)} puntos`:"")}`+
 kpi(m.empresas,"empresas individualizadas",`Públicas: ${m.empresasPublicas} · Privadas: ${m.empresasPrivadas}`)+
-kpi(m.cumpleEmpresas?"Cumple":"Falta","respaldo de campo de la guía",m.cumpleEmpresas?"Al menos 3 empresas, una pública y una privada":"Se piden al menos 3 empresas, una pública y una privada: "+falta.join("; "),m.cumpleEmpresas?"ok":"falta")+`</div>`;
+kpi(m.cumpleEmpresas?"Cumple":"Falta","cobertura de empresas",m.cumpleEmpresas?"Hay 3 o más empresas, públicas y privadas":"Conviene reunir 3 o más empresas, públicas y privadas: "+falta.join("; "),m.cumpleEmpresas?"ok":"falta")+`</div>`;
 const emp=m.listaEmpresas.length?`<div class="chips">${m.listaEmpresas.map(e=>`<span class="chip ${/^p[uú]blic/i.test(e.tipo)?"pub":/^privad/i.test(e.tipo)?"pri":""}" title="${esc(e.tipo)}">${esc(e.nombre)} · ${esc(e.tipo)}</span>`).join("")}</div>`:"";
 const cal=`<table class="cal">${fila(q.categoriasUnificadas,"Variantes de escritura unificadas","Mayúsculas, tildes o espacios distintos para una misma opción (por ejemplo «PÚBLICO» y «Público»). Ya están agrupadas en los gráficos y en el CSV limpio.")}`+
 fila(q.otrasEspecificadas,"Respuestas «Otro: …» agrupadas","Se cuentan como «Otro (especificado)». El texto que escribió cada persona está en el CSV limpio (columnas <i>…__otro_texto</i>) para revisarlo y recodificarlo.")+
 fila(dup,"Posibles envíos repetidos","Registros iguales en todas las respuestas. Puede ser un mismo envío hecho dos veces: revíselos en el CSV crudo antes de cerrar el análisis.",true)+
 fila(q.incoherentes,"Registros incoherentes","Más años desempleado que años de vida profesional.",true)+
 fila(q.atipicos,"Años profesionales atípicos","Fuera del rango habitual según la regla de Tukey (Q1 − 1,5·RIC; Q3 + 1,5·RIC). Se reportan, no se eliminan: confirme que no sean errores de digitación.",true)+`</table>`;
-return sec("muestra","Muestra y calidad","Informe · 2. Marco metodológico","Muestra y calidad de los datos","Qué tan grande es la muestra, si hay respaldo de campo en empresas públicas y privadas, y qué corrigió la limpieza antes de calcular.",
-kp+`<div class="grid">${tarjeta("Empresas individualizadas","Salen de las encuestas de empleadores y de la empresa donde trabaja cada titulado.",emp||'<p class="vacio">Todavía no hay empresas registradas.</p>',"El margen de error supone una muestra aleatoria simple. Si la muestra fue por conveniencia (quienes aceptaron responder), úselo solo como referencia y declare esa limitación en el informe.")}`+
+return sec("muestra","Muestra y calidad","Calidad de la información","Muestra y calidad de los datos","Tamaño de la muestra, cobertura de empresas públicas y privadas y correcciones aplicadas antes de calcular.",
+kp+`<div class="grid">${tarjeta("Empresas individualizadas","Salen de las encuestas de empleadores y de la empresa donde trabaja cada titulado.",emp||'<p class="vacio">Todavía no hay empresas registradas.</p>',"El margen de error supone una muestra aleatoria simple. Si la muestra fue por conveniencia (quienes aceptaron responder), úselo solo como referencia y declare esa limitación al presentar los resultados.")}`+
 tarjeta("Limpieza de datos (data wrangling)","Qué hizo el sistema con las respuestas antes de graficarlas.",cal,"")+`</div>`)}
 
 function secPerfil(s){const a=s.anios,d=s.distT,tot=s.junior+s.consolidado;
-return sec("perfil","Perfil","Informe · 3. Demanda educativa y perfil de los titulados","Perfil de los titulados","Madurez profesional de la muestra y situación laboral actual.",
+return sec("perfil","Perfil","Titulados","Perfil de los titulados","Madurez profesional de la muestra y situación laboral actual.",
 `<div class="grid kpis">${kpi(num(a.media),"años de vida profesional (media)",`Desviación estándar: ${num(a.sd)}`)}${kpi(num(a.mediana),"años (mediana)",`Mitad central: de ${num(a.q1)} a ${num(a.q3)} años`)}${kpi(`${num(s.junior*100/tot,0)} %`,"son junior (hasta 3 años)",`${s.junior} juniors · ${s.consolidado} consolidados`)}</div>`+
 `<div class="grid">${tarjeta("¿Cuántos años de vida profesional tienen?",subN(s.aniosHist),hist(s.aniosHist),lecAnios(a,s.junior,s.consolidado))}`+
 tarjeta("Situación laboral actual",subN(d.situacion),barras(d.situacion),lecDist(d.situacion))+
@@ -153,7 +153,7 @@ tarjeta("Tiempo en conseguir el primer trabajo",subN(d.tiempoPrimerTrabajo),barr
 tarjeta("Edad",subN(d.edad),barras(d.edad),lecDist(d.edad))+tarjeta("Género",subN(d.genero),barras(d.genero),lecDist(d.genero))+`</div>`)}
 
 function secFormacion(s){const d=s.distT;
-return sec("formacion","Formación continua","Informe · 3. Formación continua y financiamiento","Formación continua y áreas de interés","Qué nivel de formación complementaria tienen, cómo la financian y qué posgrados les interesan.",
+return sec("formacion","Formación continua","Titulados","Formación continua y áreas de interés","Qué nivel de formación complementaria tienen, cómo la financian y qué posgrados les interesan.",
 `<div class="grid kpis">${kpi(`${num(s.pctInteres*100,0)} %`,"le interesa un posgrado","En áreas de la Ingeniería en Sistemas")}</div><div class="grid">`+
 tarjeta("Áreas de posgrado de interés","Solo quienes dijeron estar interesados. "+subN(d.area),barras(d.area),lecArea(d.area))+
 tarjeta("Organización donde estudiarían el posgrado","Solo quienes dijeron estar interesados. "+subN(d.orgPosgrado),barras(d.orgPosgrado),lecDist(d.orgPosgrado))+
@@ -161,13 +161,13 @@ tarjeta("Mayor nivel de formación complementaria","Solo quienes cursaron formac
 tarjeta("Fuente de financiamiento","Del programa que cursaron. "+subN(d.financiamiento),barras(d.financiamiento),lecDist(d.financiamiento))+`</div>`)}
 
 function secEmpleo(s){const d=s.distT;
-return sec("empleo","Empleo","Informe · 3. Perfil laboral de los titulados","Dónde y en qué condiciones trabajan","Solo responden quienes trabajan en una organización.",
+return sec("empleo","Empleo","Titulados","Dónde y en qué condiciones trabajan","Solo responden quienes trabajan en una organización.",
 `<div class="grid">${tarjeta("Sector",subN(d.sector),barras(d.sector),lecDist(d.sector))}${tarjeta("Rubro de la organización",subN(d.rubro),barras(d.rubro),lecDist(d.rubro))}`+
 tarjeta("Departamento",subN(d.departamento),barras(d.departamento),lecDist(d.departamento))+tarjeta("Remuneración mensual promedio",subN(d.remuneracion),barras(d.remuneracion),lecDist(d.remuneracion))+`</div>`)}
 
 const LT={opinionPosgrado:"Existen posgrados de la FCyT afines a Sistemas",pertinencia:"Mi trabajo es pertinente a mi formación",satisfaccion:"Satisfacción global con la formación recibida",concordancia:"La formación concuerda con lo que exige el trabajo"};
 function secCompetencias(s){const d=s.distT,it=Object.keys(LT).map(k=>({label:LT[k],l:s.likertT[k]}));const r=radar(it,4);
-return sec("competencias","Competencias","Informe · 4. Competencias y brechas de formación","Valoración de la formación recibida","Qué opinan los titulados de su formación y qué aspectos y asignaturas destacan o cuestionan.",
+return sec("competencias","Competencias","Titulados","Valoración de la formación recibida","Qué opinan los titulados de su formación y qué aspectos y asignaturas destacan o cuestionan.",
 `<div class="grid">${tarjeta("Grado de acuerdo con cada afirmación","De 1 (totalmente en desacuerdo) a 4 (totalmente de acuerdo). A la derecha, media ± desviación estándar.",likert(it,NIV4,COL4,CL4),lecLikert(it,"de acuerdo o totalmente de acuerdo"),r?"":"ancho")}`+
 (r?tarjeta("Perfil de medias","Cuanto más lejos del centro, mayor acuerdo (escala de 1 a 4).",r,""):"")+
 tarjeta("Aspectos de la Carrera que resultaron útiles",subN(d.utiles),barras(d.utiles),lecDist(d.utiles,true))+tarjeta("Aspectos que pueden mejorarse",subN(d.mejorar),barras(d.mejorar),lecDist(d.mejorar,true))+
@@ -179,7 +179,7 @@ VCL={vc1:"Vínculos que generan oportunidades",vc2:"Participé en vinculación c
 function secEmpleadores(s){const d=s.distE,L=s.likertE,P=Object.keys(FPL).map(k=>({label:FPL[k],l:L[k]})),V=Object.keys(VCL).map(k=>({label:VCL[k],l:L[k]}));
 const ns=Object.values(L).reduce((a,l)=>a+l.noSabe,0),tot=Object.values(L).reduce((a,l)=>a+l.n+l.noSabe,0);
 const prev=d.proyeccion.filas.filter(f=>/^s[ií],/i.test(f.opcion)).reduce((a,f)=>a+f.pct,0);
-return sec("empleadores","Empleadores","Informe · 4. Oferta laboral y requerimientos del sector productivo","Lo que dicen los empleadores","Perfil de las organizaciones, demanda de profesionales y valoración de la Carrera.",
+return sec("empleadores","Empleadores","Empleadores","Lo que dicen los empleadores","Perfil de las organizaciones, demanda de profesionales y valoración de la Carrera.",
 `<div class="grid kpis">${kpi(`${num(prev,0)} %`,"prevé contratar Ingenieros de Sistemas","Con alta probabilidad o según su crecimiento")}</div><div class="grid">`+
 tarjeta("Tipo de organización",subN(d.tipo),barras(d.tipo),lecDist(d.tipo))+tarjeta("Tamaño de la organización",subN(d.tamano),barras(d.tamano),lecDist(d.tamano))+
 tarjeta("Rubro o sector principal",subN(d.rubro),barras(d.rubro),lecDist(d.rubro))+tarjeta("¿Podrían incorporar Ingenieros de Sistemas?",subN(d.proyeccion),barras(d.proyeccion),lecDist(d.proyeccion))+
@@ -190,7 +190,7 @@ tarjeta("Relación de la Carrera con la organización","Escala de 1 a 3. Las res
 `<p class="dl-nota">«No sabe»: ${ns} de ${tot} respuestas (${tot?num(ns*100/tot,0):0} %). Las preguntas abiertas (áreas emergentes, herramientas y competencias) se revisan en el CSV limpio de empleadores.</p>`)}
 
 function secCruces(s){const cr=Object.values(s.cruces||{});
-return sec("cruces","Cruces χ²","Informe · 5. Diagnóstico y síntesis de resultados","Cruces de variables (prueba χ²)","Cada tabla cuenta cuántas personas caen en cada combinación de dos respuestas y prueba si las dos preguntas están relacionadas.",
+return sec("cruces","Cruces χ²","Relaciones entre variables","Cruces de variables (prueba χ²)","Cada tabla cuenta cuántas personas caen en cada combinación de dos respuestas y prueba si las dos preguntas están relacionadas.",
 `<div class="grid">`+cr.map(c=>{const est=c.chi2!=null?`<div class="estad"><span>χ²(${c.gl}) = <b>${num(c.chi2,2)}</b></span><span><b>${pTxt(c.p)}</b></span><span>V de Cramér = <b>${num(c.cramerV,2)}</b></span><span>Celdas con esperada &lt; 5: <b>${num(c.pctEsperadosBajos,0)} %</b></span></div>`:"";
 const caut=c.chi2!=null&&!c.confiable?`<p class="cautela"><b>Cautela.</b> ${esc(c.aviso)}</p>`:"";
 return tarjeta(esc(c.titulo),`n = ${c.n} ${c.n==1?"respuesta":"respuestas"} con ambas preguntas contestadas`,heat(c)+est+caut,c.chi2!=null?lecCruce(c):"",`ancho`).replace("</article>",`<div class="acciones dl"><a href="/api/export/cruce/${esc(c.id)}.csv?datos=${fuente}&sep=${encodeURIComponent(sep)}" download="cruce_${esc(c.id)}.csv">Exportar matriz (CSV)</a></div></article>`)}).join("")+`</div>`)}
@@ -210,7 +210,7 @@ $("nav").innerHTML=S.map(x=>`<a href="#${x.id}">${x.tit}</a>`).join("")+`<a href
 
 // controles(): botones de origen de datos, avisos y enlaces de descarga según el estado actual.
 function controles(s){document.querySelectorAll("[data-f]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f==fuente));
-const a=$("aviso");a.hidden=fuente=="reales";a.textContent=fuente=="demo"?"Está viendo datos de demostración (ficticios). No los use como datos de campo.":fuente=="todos"?"Está viendo datos reales mezclados con datos de demostración (ficticios). Para el informe use «Datos reales».":"";
+const a=$("aviso");a.hidden=fuente=="reales";a.textContent=fuente=="demo"?"Está viendo datos de demostración (ficticios). No los use como datos de campo.":fuente=="todos"?"Está viendo datos reales mezclados con datos de demostración (ficticios). Para el análisis final use «Datos reales».":"";
 const q=`datos=${fuente}&sep=${encodeURIComponent(sep)}`;
 $("dl").innerHTML=[["titulados.csv","Titulados (limpio)"],["empleadores.csv","Empleadores (limpio)"],["titulados_crudo.csv","Titulados (crudo)"],["empleadores_crudo.csv","Empleadores (crudo)"],["diccionario.csv","Diccionario de datos"]].map(([f,t])=>`<a href="/api/export/${f}?${q}" download="${f}">${t}</a>`).join("");
 if(s.nTitulados&&!piEditado){$("pi").value=Math.max(0.01,s.pctInteres);$("piHint").textContent=`Valor de la encuesta: ${num(s.pctInteres*100,0)} %`}}

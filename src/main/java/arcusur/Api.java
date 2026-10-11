@@ -90,7 +90,7 @@ public class Api {
   record Def(String id, String titulo, String filas, String cols,
       Function<Titulado, String> f, Function<Titulado, String> c, String ordF, String ordC) {}
 
-  /** Cruces que calcula el panel. El primero es el que pide la historia de usuario 3 (financiamiento × posgrado). */
+  /** Cruces que calcula el panel. El primero relaciona la fuente de financiamiento con el nivel de posgrado. */
   static final List<Def> CRUCES = List.of(
       new Def("fin-nivel", "Fuente de financiamiento × nivel de formación complementaria", "Financiamiento", "Nivel de formación",
           t -> t.financiamiento, t -> t.nivelPosgrado, null, "nivelPosgrado"),
@@ -181,7 +181,7 @@ public class Api {
         "reales", todosT.stream().filter(t -> !t.demo).count() + todosE.stream().filter(e -> !e.demo).count(),
         "demo", todosT.stream().filter(t -> t.demo).count() + todosE.stream().filter(e -> e.demo).count()));
 
-    // ---- Muestra: tamaño, margen de error y respaldo de campo (empresas) ----
+    // ---- Muestra: tamaño, margen de error y cobertura de empresas ----
     Map<String, String> empresas = new TreeMap<>(); // clave de la empresa -> "Público" / "Privado" / "Sin dato"
     Map<String, String> nombres = new HashMap<>();
     for (Empleador e : es) {

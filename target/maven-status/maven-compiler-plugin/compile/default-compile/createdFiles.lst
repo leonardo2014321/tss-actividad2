@@ -1,6 +1,14 @@
+arcusur\Estadistica.class
+arcusur\Estadistica$Desc.class
 arcusur\EmpleadorRepo.class
-arcusur\Titulado.class
 arcusur\Empleador.class
+arcusur\Api$Def.class
+arcusur\Exportacion.class
+arcusur\Estadistica$Fila.class
+arcusur\Estadistica$Dist.class
+arcusur\Titulado.class
 arcusur\TituladoRepo.class
 arcusur\Api.class
 arcusur\ArcusurApp.class
+arcusur\Estadistica$Cruce.class
+arcusur\Estadistica$Lik.class

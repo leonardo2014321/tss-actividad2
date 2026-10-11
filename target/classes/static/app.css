@@ -32,7 +32,7 @@ details.desc summary{cursor:pointer;font-weight:600}
 .vacio-grande{margin:30px 0;padding:34px;text-align:center;border:2px dashed var(--line);border-radius:14px;color:var(--mut);background:#fff}
 .vacio-grande b{display:block;font-size:19px;color:var(--ink);margin-bottom:6px}
 
-/* Secciones: etiqueta con el apartado del informe al que alimentan */
+/* Secciones: etiqueta superior con la categoría de cada bloque */
 .sec{margin:44px 0 0;scroll-margin-top:60px}
 .sec .eyebrow{margin:0;font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
 .sec h2{font-size:24px;line-height:1.25;margin:2px 0 6px;letter-spacing:-.01em}
@@ -143,6 +143,6 @@ svg.dist{width:100%;height:auto;display:block}
 svg.dist text{font:12px "Segoe UI",system-ui,sans-serif;fill:var(--mut)}
 @media(prefers-reduced-motion:no-preference){button,.bar .t i,.hist .bw i{transition:background .15s,width .25s,height .25s}}
 
-/* Al imprimir (para pegar figuras en el informe) se ocultan los controles */
+/* Al imprimir se ocultan los controles */
 @media print{header,.sec-nav,.controls,details.desc,.dl,.dl-nota,.acciones,form.sim button{display:none!important}
 body{background:#fff}.card,.k{box-shadow:none;break-inside:avoid}.sec{break-before:auto}}
