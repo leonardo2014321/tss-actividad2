@@ -26,8 +26,10 @@ main{max-width:1080px;margin:0 auto;padding:8px 16px 72px}
 .seg-ctl button[aria-pressed=true]{background:var(--ink);color:#fff}
 details.desc,details.grupo{margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
 details.desc summary,details.grupo>summary{cursor:pointer;font-weight:600}
-.dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,max-content));justify-content:start;gap:10px;margin:12px 0 4px}
-.dl a{width:210px}
+.dl{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 4px}
+.dl a{min-width:140px}
+.dl.dl-grid{display:grid;grid-template-columns:repeat(auto-fill,210px);justify-content:start}
+.dl.dl-grid a{width:210px}
 .dl a:hover,button.sec-b:hover{border-color:var(--teal);background:var(--soft)}
 .dl-nota{font-size:13.5px;color:var(--mut);margin:6px 0 0}
 .aviso{margin:14px 0 0;padding:10px 14px;border-radius:var(--r-s);background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--amber-ink);font-weight:600}
@@ -42,6 +44,7 @@ details.desc summary,details.grupo>summary{cursor:pointer;font-weight:600}
 .sec h2{font-size:24px;line-height:1.25;margin:2px 0 6px;letter-spacing:-.01em}
 .sec .lead{margin:0 0 18px;color:var(--mut);max-width:780px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,430px),1fr));gap:16px;margin-bottom:16px;align-items:stretch}
+.grid:not(.kpis)>.card:last-child:nth-child(odd){grid-column:1/-1}
 .grid.kpis{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
 
 /* Indicadores */
@@ -63,7 +66,7 @@ details.desc summary,details.grupo>summary{cursor:pointer;font-weight:600}
 
 /* Barras horizontales: etiqueta | barra | porcentaje y cantidad */
 .bars{display:grid;gap:7px}
-.bar{display:grid;grid-template-columns:minmax(110px,40%) 1fr 96px;gap:10px;align-items:center;font-size:14px}
+.bar{display:grid;grid-template-columns:minmax(110px,min(40%,260px)) 1fr 96px;gap:10px;align-items:center;font-size:14px}
 .bar .l{line-height:1.3;overflow-wrap:anywhere}
 .bar .t{height:22px;background:var(--track);border-radius:6px;overflow:hidden}
 .bar .t i{display:block;height:100%;background:var(--teal2);border-radius:6px}
@@ -136,7 +139,9 @@ table.cal small{display:block;color:var(--mut);font-size:13px}
 
 /* Simulador */
 form.sim{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:var(--pad) 20px;display:grid;gap:14px;box-shadow:var(--shadow)}
-form.sim .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}
+form.sim .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:4px 14px}
+form.sim .campos label{display:grid;grid-template-rows:subgrid;grid-row:span 3;align-content:start;row-gap:0}
+form.sim .campos label small{min-height:1.4em;margin-top:4px}
 label{display:grid;gap:4px;font-weight:600;font-size:14px}
 label small{font-weight:400;color:var(--mut)}
 select,input{font:inherit;height:var(--ctl);padding:0 10px;border:1px solid var(--ctl-line);border-radius:var(--r-s);background:#fff;color:var(--ink);width:100%}
