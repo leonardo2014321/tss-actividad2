@@ -203,7 +203,6 @@ public class Api {
     mu.put("empresas", empresas.size());
     mu.put("empresasPublicas", pub);
     mu.put("empresasPrivadas", pri);
-    mu.put("cumpleEmpresas", empresas.size() >= 3 && pub >= 1 && pri >= 1);
     mu.put("listaEmpresas", empresas.entrySet().stream()
         .map(e -> Map.of("nombre", nombres.get(e.getKey()), "tipo", e.getValue())).collect(Collectors.toList()));
     m.put("muestra", mu);
@@ -231,23 +230,23 @@ public class Api {
       m.put("pctInteres", Estadistica.r(ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / ts.size()));
 
       Map<String, Dist> d = new LinkedHashMap<>();
-      d.put("edad", Estadistica.dist(ts, t -> t.edad, false, "edad"));
-      d.put("genero", Estadistica.dist(ts, t -> t.genero, false, "genero"));
-      d.put("situacion", Estadistica.dist(ts, t -> t.situacion, false, "situacion"));
-      d.put("tiempoPrimerTrabajo", Estadistica.dist(ts, t -> t.tiempoPrimerTrabajo, false, "tiempoPrimerTrabajo"));
-      d.put("numEmpleos", Estadistica.dist(ts, t -> t.numEmpleos, false, "numEmpleos"));
-      d.put("nivelPosgrado", Estadistica.dist(ts, t -> t.nivelPosgrado, false, "nivelPosgrado"));
-      d.put("financiamiento", Estadistica.dist(ts, t -> t.financiamiento, false, "financiamiento"));
-      d.put("area", Estadistica.dist(ts, t -> t.area, false, "area"));
-      d.put("orgPosgrado", Estadistica.dist(ts, t -> t.orgPosgrado, false, "orgPosgrado"));
-      d.put("rubro", Estadistica.dist(ts, t -> t.rubro, false, "rubro"));
-      d.put("sector", Estadistica.dist(ts, t -> t.sector, false, "sector"));
-      d.put("departamento", Estadistica.dist(ts, t -> t.departamento, false, "departamento"));
-      d.put("remuneracion", Estadistica.dist(ts, t -> t.remuneracion, false, "remuneracion"));
-      d.put("utiles", Estadistica.dist(ts, t -> t.utiles, true, "utiles"));
-      d.put("mejorar", Estadistica.dist(ts, t -> t.mejorar, true, "mejorar"));
-      d.put("ventaja", Estadistica.dist(ts, t -> t.ventaja, true, "ventaja"));
-      d.put("pocoUtiles", Estadistica.dist(ts, t -> t.pocoUtiles, true, "pocoUtiles"));
+      d.put("edad", Estadistica.dist(ts, t -> t.edad, false, "edad", Opciones.TITULADOS.get("edad")));
+      d.put("genero", Estadistica.dist(ts, t -> t.genero, false, "genero", Opciones.TITULADOS.get("genero")));
+      d.put("situacion", Estadistica.dist(ts, t -> t.situacion, false, "situacion", Opciones.TITULADOS.get("situacion")));
+      d.put("tiempoPrimerTrabajo", Estadistica.dist(ts, t -> t.tiempoPrimerTrabajo, false, "tiempoPrimerTrabajo", Opciones.TITULADOS.get("tiempoPrimerTrabajo")));
+      d.put("numEmpleos", Estadistica.dist(ts, t -> t.numEmpleos, false, "numEmpleos", Opciones.TITULADOS.get("numEmpleos")));
+      d.put("nivelPosgrado", Estadistica.dist(ts, t -> t.nivelPosgrado, false, "nivelPosgrado", Opciones.TITULADOS.get("nivelPosgrado")));
+      d.put("financiamiento", Estadistica.dist(ts, t -> t.financiamiento, false, "financiamiento", Opciones.TITULADOS.get("financiamiento")));
+      d.put("area", Estadistica.dist(ts, t -> t.area, false, "area", Opciones.TITULADOS.get("area")));
+      d.put("orgPosgrado", Estadistica.dist(ts, t -> t.orgPosgrado, false, "orgPosgrado", Opciones.TITULADOS.get("orgPosgrado")));
+      d.put("rubro", Estadistica.dist(ts, t -> t.rubro, false, "rubro", Opciones.TITULADOS.get("rubro")));
+      d.put("sector", Estadistica.dist(ts, t -> t.sector, false, "sector", Opciones.TITULADOS.get("sector")));
+      d.put("departamento", Estadistica.dist(ts, t -> t.departamento, false, "departamento", Opciones.TITULADOS.get("departamento")));
+      d.put("remuneracion", Estadistica.dist(ts, t -> t.remuneracion, false, "remuneracion", Opciones.TITULADOS.get("remuneracion")));
+      d.put("utiles", Estadistica.dist(ts, t -> t.utiles, true, "utiles", Opciones.TITULADOS.get("utiles")));
+      d.put("mejorar", Estadistica.dist(ts, t -> t.mejorar, true, "mejorar", Opciones.TITULADOS.get("mejorar")));
+      d.put("ventaja", Estadistica.dist(ts, t -> t.ventaja, true, "ventaja", Opciones.TITULADOS.get("ventaja")));
+      d.put("pocoUtiles", Estadistica.dist(ts, t -> t.pocoUtiles, true, "pocoUtiles", Opciones.TITULADOS.get("pocoUtiles")));
       m.put("distT", d);
 
       // Escalas Likert de 4 niveles (1 = totalmente en desacuerdo ... 4 = totalmente de acuerdo).
@@ -269,14 +268,14 @@ public class Api {
     // ---- Empleadores ----
     if (!es.isEmpty()) {
       Map<String, Dist> d = new LinkedHashMap<>();
-      d.put("tipo", Estadistica.dist(es, e -> e.tipo, false, "tipo"));
-      d.put("tamano", Estadistica.dist(es, e -> e.tamano, false, "tamano"));
-      d.put("rubro", Estadistica.dist(es, e -> e.rubro, false, "rubro"));
-      d.put("contrato", Estadistica.dist(es, e -> e.contrato, false, "contrato"));
-      d.put("proyeccion", Estadistica.dist(es, e -> e.proyeccion, false, "proyeccion"));
-      d.put("nivelFormacion", Estadistica.dist(es, e -> e.nivelFormacion, false, "nivelFormacion"));
-      d.put("medio", Estadistica.dist(es, e -> e.medio, false, "medio"));
-      d.put("cargos", Estadistica.dist(es, e -> e.cargos, true, "cargos"));
+      d.put("tipo", Estadistica.dist(es, e -> e.tipo, false, "tipo", Opciones.EMPLEADORES.get("tipo")));
+      d.put("tamano", Estadistica.dist(es, e -> e.tamano, false, "tamano", Opciones.EMPLEADORES.get("tamano")));
+      d.put("rubro", Estadistica.dist(es, e -> e.rubro, false, "rubro", Opciones.EMPLEADORES.get("rubro")));
+      d.put("contrato", Estadistica.dist(es, e -> e.contrato, false, "contrato", Opciones.EMPLEADORES.get("contrato")));
+      d.put("proyeccion", Estadistica.dist(es, e -> e.proyeccion, false, "proyeccion", Opciones.EMPLEADORES.get("proyeccion")));
+      d.put("nivelFormacion", Estadistica.dist(es, e -> e.nivelFormacion, false, "nivelFormacion", Opciones.EMPLEADORES.get("nivelFormacion")));
+      d.put("medio", Estadistica.dist(es, e -> e.medio, false, "medio", Opciones.EMPLEADORES.get("medio")));
+      d.put("cargos", Estadistica.dist(es, e -> e.cargos, true, "cargos", Opciones.EMPLEADORES.get("cargos")));
       m.put("distE", d);
 
       // Las 18 afirmaciones (escala 1 a 3). El valor 0 = "No sabe" se cuenta aparte.
@@ -365,6 +364,21 @@ public class Api {
   @GetMapping(value = "/export/empleadores_crudo.csv", produces = "text/csv; charset=UTF-8")
   public String csvECrudo(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
     return Exportacion.crudo(empleadores(datos), Empleador.class, separador(sep));
+  }
+
+  /** Prueba de uniformidad (Chi-cuadrado) de cada pregunta de opción única. */
+  @GetMapping(value = "/export/uniformidad.csv", produces = "text/csv; charset=UTF-8")
+  public String csvUniformidad(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    List<Titulado> ts = titulados(datos);
+    List<Empleador> es = empleadores(datos);
+    Map<String, Dist> dt = new LinkedHashMap<>(), de = new LinkedHashMap<>();
+    for (String c : CAT_T) {
+      if (Opciones.TITULADOS.containsKey(c)) dt.put(c, Estadistica.dist(ts, t -> (String) Exportacion.valor(t, c), false, c, Opciones.TITULADOS.get(c)));
+    }
+    for (String c : CAT_E) {
+      if (Opciones.EMPLEADORES.containsKey(c)) de.put(c, Estadistica.dist(es, e -> (String) Exportacion.valor(e, c), false, c, Opciones.EMPLEADORES.get(c)));
+    }
+    return Exportacion.uniformidad(dt, de, separador(sep));
   }
 
   /** Significado de cada variable y limpieza que recibe. */

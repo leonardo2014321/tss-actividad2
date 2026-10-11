@@ -1,5 +1,7 @@
 /* Estilos de la pantalla de encuestas (index.html). Colores base en variables: tinta, verde institucional, fondo y bordes. */
-:root{--ink:#14202e;--teal:#0f766e;--bg:#eef2f5;--line:#cdd6df;--soft:#e3f2f0;--mut:#52606f}
+:root{--ink:#14202e;--teal:#0f766e;--bg:#eef2f5;--line:#cdd6df;--soft:#e3f2f0;--mut:#52606f;
+/* Medidas comunes: cuadros de opción, campos y botones miden lo mismo */
+--ctl:52px;--r:10px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 "Segoe UI",system-ui,sans-serif}
 /* Barra superior y contenedor central */
@@ -29,7 +31,7 @@ input[type=radio]{position:absolute;opacity:0;width:100%;height:100%;margin:0;cu
 /* Cuadros de opción: mismo alto mínimo, texto centrado verticalmente y ancho completo */
 .opts{align-items:stretch}
 .opts label{display:flex}
-.opts span{display:flex;align-items:center;width:100%;min-height:52px;padding:12px 16px;border:2px solid var(--line);border-radius:10px;background:#fff;line-height:1.35}
+.opts span{display:flex;align-items:center;width:100%;min-height:var(--ctl);padding:12px 16px;border:2px solid var(--line);border-radius:var(--r);background:#fff;line-height:1.35}
 /* Variantes: lista de una columna (opciones largas) y 4 columnas (escala de acuerdo); en celular, 2 columnas */
 .opts.long{grid-template-columns:1fr}
 .opts.c4{grid-template-columns:repeat(4,1fr)}
@@ -38,28 +40,28 @@ input[type=radio]{position:absolute;opacity:0;width:100%;height:100%;margin:0;cu
 /* Opción seleccionada */
 .opts input:checked+span{border-color:var(--teal);background:var(--soft);font-weight:600}
 /* Escala Likert numérica (círculos) */
-.lk{display:flex;gap:10px}.lk label{flex:1;max-width:72px}
-.lk span{display:grid;place-items:center;height:52px;border:2px solid var(--line);border-radius:50%;font-weight:600;background:#fff}
+.lk{display:flex;gap:10px}.lk label{flex:1;max-width:var(--ctl)}
+.lk span{display:grid;place-items:center;width:100%;aspect-ratio:1;border:2px solid var(--line);border-radius:50%;font-weight:600;background:#fff}
 .lk input:checked+span{background:var(--teal);border-color:var(--teal);color:#fff}
 .lkl{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:14px;color:var(--mut)}
 /* Accesibilidad: contorno visible al navegar con teclado; campos de texto, número y lista */
 input[type=radio]:focus-visible+span,input[type=number]:focus-visible,input:not([type]):focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
-input[type=number],input:not([type]),select{width:100%;font:inherit;padding:13px 14px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+input[type=number],input:not([type]),select{width:100%;font:inherit;height:var(--ctl);padding:0 14px;border:2px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
 /* Mensaje de error y botones de navegación */
 #err{min-height:24px;margin:0 0 12px;color:#b42318;font-weight:600}
 .nav{display:flex;justify-content:space-between;gap:12px}
-.nav button,#otra{min-height:50px;padding:0 26px;font:inherit;font-weight:600;border:0;border-radius:10px;background:var(--teal);color:#fff;cursor:pointer}
+.nav button,#otra{min-height:var(--ctl);padding:0 26px;font:inherit;font-weight:600;border:0;border-radius:var(--r);background:var(--teal);color:#fff;cursor:pointer}
 .nav .sec{background:#fff;color:var(--ink);border:2px solid var(--line)}
 #sig{margin-left:auto}
 /* Los elementos con atributo hidden nunca se muestran */
 [hidden]{display:none!important}
-@media(max-width:480px){.card{padding:20px}h1{font-size:24px}.lk{gap:6px}.lk span{height:46px}}
+@media(max-width:480px){.card{padding:20px}h1{font-size:24px}.lk{gap:6px}}
 @media(prefers-reduced-motion:no-preference){#bar{transition:width .3s}}
 /* Casillas de elección múltiple, correo y teléfono, campos "Otro" y contador de opciones */
 input[type=checkbox]{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
 input[type=checkbox]:focus-visible+span{outline:3px solid var(--teal);outline-offset:2px}
 input[type=checkbox]:disabled+span{opacity:.45}
-input[type=email],input[type=tel]{width:100%;font:inherit;padding:13px 14px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+input[type=email],input[type=tel]{width:100%;font:inherit;height:var(--ctl);padding:0 14px;border:2px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
 input[type=email]:focus-visible,input[type=tel]:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 fieldset input[name$=_otro],fieldset input[name$=_otra]{margin-top:10px}
 .cnt{margin:8px 0 0;font-size:14px;font-weight:600;color:var(--teal)}
@@ -70,6 +72,6 @@ textarea:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 /* Navegación superior y botones de enlace (.btn) */
 .top nav{display:flex;gap:20px}
 .fin-nav{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
-.btn{display:inline-flex;align-items:center;min-height:50px;padding:0 26px;font:inherit;font-weight:600;border-radius:10px;background:#fff;color:var(--ink);border:2px solid var(--line);text-decoration:none}
+.btn{display:inline-flex;align-items:center;min-height:var(--ctl);padding:0 26px;font:inherit;font-weight:600;border-radius:var(--r);background:#fff;color:var(--ink);border:2px solid var(--line);text-decoration:none}
 .btn:hover{border-color:var(--teal);background:var(--soft)}
 .btn:focus-visible{outline:3px solid var(--teal);outline-offset:2px}

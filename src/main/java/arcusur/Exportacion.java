@@ -4,6 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Exportación de datos a CSV (se abre en Excel, R o Python).
@@ -286,6 +287,39 @@ final class Exportacion {
     for (String[] d : DIC_T) s.append(fila(sep, List.of(texto("titulados"), texto(d[0]), texto(d[1]), texto(d[2]), texto(tratamiento(d[1])))));
     for (String[] d : DIC_E) s.append(fila(sep, List.of(texto("empleadores"), texto(d[0]), texto(d[1]), texto(d[2]), texto(tratamiento(d[1])))));
     return s.toString();
+  }
+
+  // =====================================================================
+  // PRUEBAS DE UNIFORMIDAD
+  // =====================================================================
+
+  /** Descripción de una variable según el diccionario (si no está, devuelve el nombre del campo). */
+  private static String descripcion(String[][] dic, String variable) {
+    for (String[] d : dic) {
+      if (d[0].equals(variable)) return d[2];
+    }
+    return variable;
+  }
+
+  /** Prueba de uniformidad (Chi-cuadrado, alfa = 5 %) de cada pregunta de opción única, con las frecuencias observadas. */
+  static String uniformidad(Map<String, Estadistica.Dist> titulados, Map<String, Estadistica.Dist> empleadores, char sep) {
+    StringBuilder s = new StringBuilder(BOM);
+    s.append(fila(sep, Stream.of("tabla", "variable", "pregunta", "n", "categorias_k", "FE_n_sobre_k", "chi2", "gl",
+        "chi2_critico_5pct", "p", "resultado", "prueba_confiable", "frecuencias_observadas").map(Exportacion::texto).collect(Collectors.toList())));
+    filasUnif(s, sep, "titulados", DIC_T, titulados);
+    filasUnif(s, sep, "empleadores", DIC_E, empleadores);
+    return s.toString();
+  }
+
+  private static void filasUnif(StringBuilder s, char sep, String tabla, String[][] dic, Map<String, Estadistica.Dist> dists) {
+    dists.forEach((campo, d) -> {
+      Estadistica.Unif u = d.unif();
+      if (u == null) return;
+      s.append(fila(sep, List.of(texto(tabla), texto(campo), texto(descripcion(dic, campo)), numero(u.n(), sep), numero(u.k(), sep),
+          numero(u.fe(), sep), numero(u.chi2(), sep), numero(u.gl(), sep), numero(u.critico(), sep), numero(u.p(), sep),
+          texto(u.uniforme() ? "Uniformidad" : "No uniformidad"), texto(u.confiable() ? "Sí" : "No (FE < 5)"),
+          texto(d.filas().stream().map(f -> f.opcion() + ": " + f.n()).collect(Collectors.joining(" | "))))));
+    });
   }
 
   // =====================================================================

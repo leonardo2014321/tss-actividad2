@@ -28,7 +28,7 @@ Para detenerlo: `Ctrl + C`. Para generar un jar: `mvn clean package` y luego `ja
 
 ## 3. Cómo probarlo (2 minutos)
 1. Entra al **Panel** y pulsa **Cargar datos de demostración** (60 titulados y 6 empleadores ficticios).
-2. Revisa los gráficos (cada uno trae su lectura en palabras), los cruces con la prueba χ² y los escenarios de simulación. Si aún no hay respuestas reales, el panel abre la demostración solo.
+2. Recorre las pestañas: **Resumen** (hallazgos principales), **Titulados**, **Empleadores**, **Pruebas estadísticas** (uniformidad y relaciones entre variables con χ²), **Simulación** y **Datos** (muestra, limpieza y descargas). Cada gráfico trae su lectura en palabras. Si aún no hay respuestas reales, el panel abre la demostración solo.
 3. Pulsa **Borrar datos de demostración**. Los datos ficticios **no deben usarse como datos de campo**.
 4. Llena una encuesta real en la página principal y mira cómo aparece en el panel. Exporta con los enlaces de descarga (ver sección 4).
 
@@ -39,7 +39,8 @@ Para detenerlo: `Ctrl + C`. Para generar un jar: `mvn clean package` y luego `ja
 | Recolección | Formulario web con listas cerradas, rutas condicionales y validación en el servidor |
 | Limpieza de datos | Unifica mayúsculas, tildes y espacios; agrupa «Otro: …»; convierte las opciones múltiples en columnas 0/1; reporta duplicados, incoherencias y atípicos (regla de Tukey) |
 | Estadística univariada | Frecuencias absolutas y relativas, media, mediana, desviación, cuartiles y porcentajes por nivel en las escalas Likert |
-| Estadística bivariada | 5 cruces con χ², grados de libertad, p, V de Cramér, frecuencias esperadas y residuos; avisa si el χ² no es confiable (más del 20 % de celdas con esperada menor a 5) |
+| Uniformidad | Prueba χ² de bondad de ajuste en cada pregunta de opción única: FE = n/k, χ², valor crítico (α = 5 %) y conclusión «Uniformidad» o «No uniformidad». Cuenta todas las opciones de la pregunta, también las que nadie eligió |
+| Estadística bivariada (independencia) | 5 cruces con χ², grados de libertad, p, V de Cramér, frecuencias esperadas y residuos; avisa si el χ² no es confiable (más del 20 % de celdas con esperada menor a 5) |
 | Visualización | Barras, histograma, barras Likert apiladas, radar, mapa de calor y curvas de simulación; el panel se puede imprimir |
 | Simulación | Monte Carlo: probabilidad de abrir un programa, escenario base vs. con becas |
 
@@ -48,6 +49,7 @@ Para detenerlo: `Ctrl + C`. Para generar un jar: `mvn clean package` y luego `ja
 |---|---|
 | `/api/export/titulados.csv`, `empleadores.csv` | Datos **limpios** para analizar |
 | `/api/export/titulados_crudo.csv`, `empleadores_crudo.csv` | Copia fiel de la base de datos (trazabilidad) |
+| `/api/export/uniformidad.csv` | Resultado de la prueba de uniformidad de cada pregunta, con las frecuencias observadas |
 | `/api/export/diccionario.csv` | Qué significa cada variable y qué limpieza recibe |
 | `/api/export/cruce/<id>.csv` | Matriz de un cruce: frecuencias, % por fila, esperados, residuos y χ² (`fin-nivel`, `area-sector`, `seg-area`, `int-sit`, `area-fin`) |
 
@@ -57,7 +59,8 @@ Todos aceptan `?datos=reales|demo|todos` (por defecto `reales`) y `?sep=,` (por 
 ```
 pom.xml                         dependencias
 src/main/java/arcusur/          Titulado, Empleador (entidades), repositorios
-                                Api (rutas REST y simulación), Estadistica (limpieza, frecuencias, χ²), Exportacion (CSV)
+                                Api (rutas REST y simulación), Estadistica (limpieza, frecuencias, χ²), Exportacion (CSV),
+                                Opciones (opciones de cada pregunta, tomadas de index.html)
 src/main/resources/static/      index.html (encuestas), dashboard.html (panel), app.css y encuesta.css
 src/main/resources/application.properties   configuración (puerto, base de datos)
 ```
@@ -75,6 +78,7 @@ src/main/resources/application.properties   configuración (puerto, base de dato
 - Las preguntas de la encuesta se definen en `index.html`; si las modificas, ajusta también `Titulado.java`, `Empleador.java` y `Api.java`.
 - Para PostgreSQL: añade la dependencia `org.postgresql:postgresql` y cambia las 3 líneas `spring.datasource.*` de `application.properties`.
 - Escalas Likert: 4 niveles en titulados y 3 niveles más «No sabe» en empleadores.
+- Si cambias las opciones de una pregunta en `index.html`, actualiza también `Opciones.java` (la prueba de uniformidad usa ese número de categorías).
 - Con pocas respuestas el χ² casi nunca es confiable (el panel lo advierte). Reúne más respuestas o agrupa categorías antes de concluir.
 - El margen de error del panel supone muestra aleatoria; si la muestra fue por conveniencia, es solo referencial.
 

@@ -4,7 +4,9 @@ arcusur\EmpleadorRepo.class
 arcusur\Empleador.class
 arcusur\Api$Def.class
 arcusur\Exportacion.class
+arcusur\Opciones.class
 arcusur\Estadistica$Fila.class
+arcusur\Estadistica$Unif.class
 arcusur\Estadistica$Dist.class
 arcusur\Titulado.class
 arcusur\TituladoRepo.class

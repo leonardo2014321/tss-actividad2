@@ -107,6 +107,13 @@ public final class Estadistica {
     return corregido != null ? corregido : bonito(t);
   }
 
+  /** Etiqueta limpia de una opción tal como la ofrece la encuesta ("OTRO RUBRO:" sin texto -> "Otro (especificado)"). */
+  static String etiquetaOpcion(String raw) {
+    String t = raw.trim().replaceAll("\\s+", " ");
+    if (t.matches("(?is)^otr[oa@s]?[^:]{0,25}:\\s*$")) return "Otro (especificado)";
+    return etiqueta(t);
+  }
+
   /** Separa una respuesta de elección múltiple ("a|b|Otra: texto") en sus opciones. El texto de "Otra" va al final. */
   static List<String> partes(String s) {
     String base = s, otra = null;
@@ -170,8 +177,31 @@ public final class Estadistica {
   /** Una opción con su frecuencia absoluta (n), relativa (pct) y acumulada (acum), en %. */
   public record Fila(String opcion, long n, double pct, double acum) {}
 
-  /** Distribución de una pregunta. total = personas que la respondieron; multiple = admite varias opciones. */
-  public record Dist(long total, boolean multiple, List<Fila> filas) {}
+  /**
+   * Prueba de uniformidad (Chi-cuadrado de bondad de ajuste): ¿las respuestas se reparten por igual entre las categorías?
+   * H0: todas las categorías son igualmente probables. fe = n / k es la frecuencia esperada de cada una.
+   * chi2 = suma de (FO - FE)² / FE, con gl = k - 1. Si chi2 < critico (alfa = 5 %), hay uniformidad.
+   * confiable = false cuando fe < 5 (con tan pocas respuestas por categoría la prueba no es fiable).
+   */
+  public record Unif(int k, long n, double fe, double chi2, int gl, double critico, double p, boolean uniforme, boolean confiable) {}
+
+  /**
+   * Distribución de una pregunta. total = personas que la respondieron; multiple = admite varias opciones;
+   * unif = prueba de uniformidad (solo en preguntas de opción única; null en las demás).
+   */
+  public record Dist(long total, boolean multiple, List<Fila> filas, Unif unif) {}
+
+  /** Prueba de uniformidad sobre las frecuencias observadas (alfa = 5 %). Devuelve null si no se puede calcular. */
+  static Unif uniformidad(List<Fila> filas, long total) {
+    int k = filas.size();
+    if (k < 2 || total == 0) return null;
+    double fe = total / (double) k, chi2 = 0;
+    for (Fila f : filas) chi2 += Math.pow(f.n() - fe, 2) / fe;
+    int gl = k - 1;
+    ChiSquaredDistribution d = new ChiSquaredDistribution(gl);
+    return new Unif(k, total, r(fe), r(chi2), gl, r(d.inverseCumulativeProbability(0.95)),
+        Math.round((1 - d.cumulativeProbability(chi2)) * 1e6) / 1e6, chi2 < d.inverseCumulativeProbability(0.95), fe >= 5);
+  }
 
   private static int pos(String[] orden, String etiqueta) {
     String k = clave(etiqueta);
@@ -187,6 +217,14 @@ public final class Estadistica {
    * Las variables ordinales conservan su orden natural; las demás se ordenan de mayor a menor frecuencia.
    */
   public static <T> Dist dist(List<T> datos, Function<T, String> f, boolean multiple, String campo) {
+    return dist(datos, f, multiple, campo, null);
+  }
+
+  /**
+   * Igual que la anterior, pero con las opciones que ofrece la encuesta: las que nadie eligió aparecen con 0 respuestas
+   * y la prueba de uniformidad cuenta todas las categorías disponibles.
+   */
+  public static <T> Dist dist(List<T> datos, Function<T, String> f, boolean multiple, String campo, String[] opciones) {
     List<List<String>> resp = new ArrayList<>();
     for (T x : datos) {
       String s = f.apply(x);
@@ -198,8 +236,16 @@ public final class Estadistica {
     }
     Map<String, String> canon = canon(resp.stream().flatMap(List::stream).collect(Collectors.toList()));
     Map<String, Long> cuenta = new LinkedHashMap<>();
+    Map<String, String> deOpcion = new HashMap<>(); // clave -> etiqueta de la opción ofrecida
+    if (opciones != null) {
+      for (String o : opciones) {
+        String l = etiquetaOpcion(o);
+        deOpcion.put(clave(l), l);
+        cuenta.put(l, 0L);
+      }
+    }
     for (List<String> e : resp) {
-      for (String l : new LinkedHashSet<>(e.stream().map(v -> canon.get(clave(v))).collect(Collectors.toList()))) {
+      for (String l : new LinkedHashSet<>(e.stream().map(v -> deOpcion.getOrDefault(clave(v), canon.get(clave(v)))).collect(Collectors.toList()))) {
         cuenta.merge(l, 1L, Long::sum);
       }
     }
@@ -221,7 +267,7 @@ public final class Estadistica {
       acum += pct;
       filas.add(new Fila(e.getKey(), e.getValue(), r1(pct), r1(Math.min(acum, multiple ? acum : 100))));
     }
-    return new Dist(total, multiple, filas);
+    return new Dist(total, multiple, filas, multiple ? null : uniformidad(filas, total));
   }
 
   /** Descriptivos de una variable numérica. */
@@ -256,7 +302,7 @@ public final class Estadistica {
       acum += pct;
       filas.add(new Fila(nom[i], c[i], r1(pct), r1(Math.min(acum, 100))));
     }
-    return new Dist(v.length, false, filas);
+    return new Dist(v.length, false, filas, null);
   }
 
   /**
