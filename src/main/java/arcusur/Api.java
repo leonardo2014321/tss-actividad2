@@ -414,106 +414,210 @@ public class Api {
 
   static final String TRAB = "Actualmente me encuentro trabajando en una organización";
 
+  /** Cantidad de registros ficticios que genera la demostración. */
+  static final int DEMO_TITULADOS = 150;
+
   /**
-   * Crea 60 titulados y 6 empleadores ficticios (marcados con demo = true)
+   * Organización ficticia de la demostración: nombre, si es pública, rubro (posición en la lista de titulados y en la
+   * de empleadores), tamaño (0 grande ... 3 micro), departamento y peso con que los titulados la eligen como lugar
+   * de trabajo (peso 0 = solo aparece como empleador). Todos los nombres son inventados.
+   */
+  private record Org(String nombre, boolean publica, int rubroT, int rubroE, int tamano, String depto, int peso) {}
+
+  private static final List<Org> ORGS = List.of(
+      new Org("Andes Telecom S.A.", false, 0, 2, 0, "COCHABAMBA", 8),
+      new Org("Cooperativa Telefónica del Valle", false, 0, 2, 1, "COCHABAMBA", 5),
+      new Org("Universidad Pública Demo", true, 1, 7, 0, "COCHABAMBA", 8),
+      new Org("Instituto Técnico Cochabamba Demo", false, 1, 7, 2, "COCHABAMBA", 4),
+      new Org("Soluciones Andinas S.R.L.", false, 2, 0, 2, "COCHABAMBA", 10),
+      new Org("Cóndor Software", false, 2, 0, 1, "LA PAZ", 6),
+      new Org("Tarija Digital", false, 2, 13, 3, "TARIJA", 3),
+      new Org("Valle Sistemas Ltda.", false, 2, 1, 1, "COCHABAMBA", 7),
+      new Org("Redes del Sur Ltda.", false, 3, 2, 1, "COCHABAMBA", 5),
+      new Org("Hospital Regional Demo", true, 4, 10, 0, "COCHABAMBA", 4),
+      new Org("Clínica Santa Cruz Demo", false, 4, 10, 1, "SANTA CRUZ", 3),
+      new Org("Banco Andino Demo", false, 5, 5, 0, "LA PAZ", 7),
+      new Org("Banco del Estado Demo", true, 5, 5, 0, "COCHABAMBA", 6),
+      new Org("Cooperativa Financiera Demo", false, 5, 5, 1, "COCHABAMBA", 4),
+      new Org("Consultora Altiplano", false, 2, 4, 3, "LA PAZ", 3),
+      new Org("Gobernación Demo", true, -1, 6, 0, "COCHABAMBA", 0),
+      new Org("Alcaldía Demo", true, -1, 6, 0, "COCHABAMBA", 0),
+      new Org("Servicio de Impuestos Demo", true, -1, 6, 0, "LA PAZ", 0),
+      new Org("Industrias del Valle Demo", false, -1, 8, 0, "COCHABAMBA", 0),
+      new Org("Comercial Digital Demo", false, -1, 9, 1, "SANTA CRUZ", 0),
+      new Org("Seguridad Informática Demo", false, -1, 11, 2, "COCHABAMBA", 0),
+      new Org("Analítica Andina Demo", false, -1, 12, 2, "COCHABAMBA", 0),
+      new Org("Soporte Total Demo", false, -1, 3, 2, "COCHABAMBA", 0),
+      new Org("Startup Wayra Demo", false, -1, 13, 3, "COCHABAMBA", 0));
+
+  /** Índice elegido al azar según pesos relativos (un peso 0 nunca sale). */
+  private static int pesos(Random r, double... w) {
+    double total = 0;
+    for (double x : w) total += x;
+    double u = r.nextDouble() * total;
+    for (int i = 0; i < w.length; i++) {
+      u -= w[i];
+      if (u < 0) return i;
+    }
+    int ultimo = w.length - 1; // solo por redondeo: el último con peso mayor que 0
+    while (ultimo > 0 && w[ultimo] <= 0) ultimo--;
+    return ultimo;
+  }
+
+  /** Valor de una escala Likert (1 a mx) a partir de un número continuo. */
+  private static int escala(double x, int mx) {
+    return (int) Math.max(1, Math.min(mx, Math.round(x)));
+  }
+
+  /** Elige n opciones distintas, con más probabilidad las de mayor peso; las devuelve unidas por "|". */
+  private static String elige(Random r, String[] op, int n, double... w) {
+    List<Integer> libres = new ArrayList<>();
+    for (int i = 0; i < op.length; i++) libres.add(i);
+    List<String> sel = new ArrayList<>();
+    for (int k = 0; k < n && !libres.isEmpty(); k++) {
+      double total = 0;
+      for (int i : libres) total += w[i];
+      double u = r.nextDouble() * total;
+      int pick = libres.get(libres.size() - 1);
+      for (int i : libres) {
+        u -= w[i];
+        if (u < 0) { pick = i; break; }
+      }
+      libres.remove(Integer.valueOf(pick));
+      sel.add(op[pick]);
+    }
+    return String.join("|", sel);
+  }
+
+  /**
+   * Crea {@value #DEMO_TITULADOS} titulados y un empleador por cada organización ficticia (marcados con demo = true)
    * para probar el panel. NO deben usarse como datos de campo.
+   *
+   * Las respuestas no son independientes entre sí, para que los gráficos y las pruebas tengan sentido: la edad crece con
+   * los años de vida profesional, quien trabaja tiene empresa, rubro, sector y departamento coherentes entre sí, el cargo y
+   * el sueldo suben con la experiencia, quien estudió una maestría suele tener más becas, y las valoraciones (Likert) de cada
+   * persona parten de una opinión propia. Se vuelve a generar siempre igual (semilla fija) y reemplaza la demostración anterior.
    */
   @PostMapping("/seed")
   public String seed() {
-    Random r = new Random(7); // semilla fija: siempre genera los mismos datos
-    String[] U = {
-      "La aplicación práctica de conceptos teóricos en proyectos reales.",
-      "El desarrollo de habilidades analíticas y de resolución de problemas.",
-      "La enseñanza de herramientas y software específico de la industria."};
-    String[] M = {
-      "Actualización constante del plan de estudios para atender tendencias actuales.",
-      "Mayor relacionamiento del estudiante con las empresas por medio de práctica profesionales.",
-      "Ofrecimiento de más opciones de especialización."};
+    reset(); // evita duplicar la demostración si se pulsa dos veces
+    Random r = new Random(7);
+    Map<String, String[]> T = Opciones.TITULADOS, E = Opciones.EMPLEADORES;
+    double[] pesoOrg = ORGS.stream().mapToDouble(Org::peso).toArray();
 
-    // ---- 60 titulados ficticios ----
-    for (int i = 0; i < 60; i++) {
+    // ---- Titulados ficticios ----
+    for (int i = 0; i < DEMO_TITULADOS; i++) {
       Titulado t = new Titulado();
       t.demo = true;
-      t.edad = pk(r, "19 a 22", "23 a 26", "27 a 30", "31 a 34", "35 años o más");
-      t.genero = pk(r, "Hombre", "Hombre", "Mujer");
-      t.aniosProfesionales = (double) r.nextInt(15);
-      t.aniosDesempleado = Math.min(t.aniosProfesionales, (double) r.nextInt(2));
 
-      // Ruta: formación complementaria.
-      t.formacion = pk(r, "SI", "NO");
-      if (t.formacion.equals("SI")) {
-        t.nivelPosgrado = pk(r, "DIPLOMADO", "DIPLOMADO", "MAESTRIA", "ESPECIALIDAD");
-        t.financiamiento = pk(r, "FINANCIADO CON RECURSOS PROPIOS", "FINANCIADO CON RECURSOS PROPIOS",
-            "FINANCIADO PARCIALMENTE POR MEDIO DE UNA BECA", "TOTAL FINANCIAMIENTO POR MEDIO DE UNA BECA");
-        t.dondeCurso = "UNIVERSIDADES PRIVADAS NACIONALES";
-        t.nombrePrograma = "Programa demo";
+      // Perfil: años de vida profesional (la mayoría son juniors) y edad coherente con ellos.
+      int a = (int) Math.min(22, Math.round(-Math.log(1 - r.nextDouble()) * 5.5));
+      t.aniosProfesionales = (double) a;
+      int edad = 23 + a + r.nextInt(4);
+      t.edad = T.get("edad")[edad <= 26 ? 2 : edad <= 30 ? 3 : edad <= 34 ? 4 : 5];
+      t.genero = r.nextDouble() < 0.7 ? "Hombre" : "Mujer";
+      double animo = 3.0 + 0.6 * r.nextGaussian(); // opinión general de esta persona sobre la Carrera
+
+      // Situación laboral: con más años es más probable que trabaje en una organización.
+      boolean trabaja = r.nextDouble() < Math.min(0.92, 0.55 + 0.03 * a);
+      boolean emprende = !trabaja && r.nextDouble() < 0.35;
+      t.situacion = trabaja ? TRAB : T.get("situacion")[emprende ? 2 : 1];
+      int desempleo = trabaja ? pesos(r, 70, 20, 10) : 1 + pesos(r, 50, 30, 20);
+      t.aniosDesempleado = (double) Math.min(a, desempleo);
+
+      // Ruta: formación complementaria. Con más años es más probable; la maestría se beca más que el diplomado.
+      boolean formacion = r.nextDouble() < Math.min(0.75, 0.15 + 0.04 * a);
+      t.formacion = formacion ? "SI" : "NO";
+      if (formacion) {
+        int nivel = pesos(r, 55, 15, 27, 3);
+        t.nivelPosgrado = T.get("nivelPosgrado")[nivel];
+        t.financiamiento = T.get("financiamiento")[nivel >= 2 ? pesos(r, 35, 40, 25) : pesos(r, 70, 10, 20)];
+        t.dondeCurso = T.get("dondeCurso")[pesos(r, 30, 20, 5, 8, 12, 25, 0)];
+        t.nombrePrograma = "Programa de posgrado (demo)";
       }
 
-      // Ruta: interés en posgrado.
-      t.interes = pk(r, "SI", "SI", "NO");
-      if (t.interes.equals("SI")) {
-        t.area = pk(r, "IA", "Robótica", "Ingeniería de Software", "Base de Datos", "Redes de Datos y Seguridad");
-        t.orgPosgrado = pk(r, "ESCUELA UNIVERSITARIA DE POSGRADO (EUPG)", "DIRECCIÓN DE POSGRADO FCyT", "UNIVERSIDADES INTERNACIONALES");
-      }
-      t.opinionPosgrado = lv(r, 3, 4);
-
-      // Ruta: situación laboral.
-      t.situacion = pk(r, TRAB, TRAB, "Actualmente NO trabajo", "Actualmente dedico mi tiempo COMPLETO a un emprendimiento propio");
-      if (t.situacion.equals(TRAB)) {
-        t.empresa = "Empresa demo";
-        t.rubro = pk(r, "Desarrollo de Software", "Banca", "Educación", "Telecomunicaciones");
-        t.sector = pk(r, "PÚBLICO", "PRIVADO");
-        t.departamento = "COCHABAMBA";
-        t.areaOrg = pk(r, "Desarrollo", "Cómputo");
-        t.cargo = pk(r, "Técnico", "Desarrollo", "Help Desk");
-        t.pertinencia = lv(r, 3, 4);
-        t.antiguedad = pk(r, "Menos de 1 año", "Entre 1 a 2 años", "Entre 2 a 5 años");
-        t.medio = "INTERNET Y REDES SOCIALES";
-        t.remuneracion = pk(r, "Entre Bs. 2.500 - Bs. 3.500", "Entre Bs. 3.501 - Bs. 5.000", "Entre Bs. 5.001 - Bs. 7.000");
-        t.primerEmpleo = pk(r, "SI", "NO");
+      // Ruta: trabajo actual (la organización define rubro, sector y departamento).
+      Org org = null;
+      if (trabaja) {
+        org = ORGS.get(pesos(r, pesoOrg));
+        t.empresa = org.nombre();
+        t.rubro = T.get("rubro")[org.rubroT()];
+        t.sector = org.publica() ? "PÚBLICO" : "PRIVADO";
+        t.departamento = org.depto();
+        t.areaOrg = T.get("areaOrg")[org.rubroT() == 2 ? pesos(r, 0, 0, 30, 70) : pesos(r, 0, 20, 60, 20)];
+        double[] wc = a <= 3 ? new double[] {0, 35, 30, 35} : a <= 8 ? new double[] {15, 35, 40, 10} : new double[] {45, 25, 25, 5};
+        if (t.areaOrg.equals("Desarrollo")) wc[2] *= 1.8;
+        int cargo = pesos(r, wc);
+        t.cargo = T.get("cargo")[cargo];
+        int tope = a < 1 ? 0 : a < 2 ? 1 : a < 5 ? 2 : a < 8 ? 3 : a < 11 ? 4 : a < 15 ? 5 : a < 20 ? 6 : 7;
+        t.antiguedad = T.get("antiguedad")[Math.max(0, tope - (int) (-Math.log(1 - r.nextDouble()) * 1.2))];
+        t.medio = T.get("medio")[org.publica() ? pesos(r, 5, 15, 65, 15, 0) : pesos(r, 5, 40, 20, 35, 0)];
+        double puntos = 0.8 + 0.3 * a + (cargo == 0 ? 1.8 : 0) + (org.rubroT() == 5 && !org.publica() ? 0.6 : 0) + 0.7 * r.nextGaussian();
+        t.remuneracion = T.get("remuneracion")[(int) Math.max(0, Math.min(5, Math.round(puntos)))];
+        t.primerEmpleo = r.nextDouble() < (a <= 3 ? 0.7 : 0.12) ? "SI" : "NO";
+        t.pertinencia = escala(animo - 0.1 + 0.5 * r.nextGaussian(), 4);
       }
 
-      // Trayectoria, satisfacción y preguntas de elección múltiple.
-      t.tiempoPrimerTrabajo = pk(r, "Menos de 1 mes", "Entre 1 - 4 meses", "Entre 4 - 8 meses");
-      t.numEmpleos = pk(r, "1", "2", "3");
-      t.satisfaccion = lv(r, 3, 4);
-      t.concordancia = lv(r, 3, 4);
-      t.utiles = U[0] + "|" + U[1 + r.nextInt(2)];
-      t.mejorar = M[0] + "|" + M[1 + r.nextInt(2)];
-      t.ventaja = "Base de Datos|Inteligencia Artificial|Redes de Computadora|Planificación de Proyectos y Gestión|Introducción";
-      t.pocoUtiles = "Telefonía IP|Web Semánticas|Teoría de Grafos|Contabilidad Básica|Robótica";
-      t.redContactos = pk(r, "SI", "NO");
+      // Ruta: interés en posgrado. Quien no trabaja se interesa más; cada área depende de la experiencia y del sector.
+      double pInteres = (trabaja ? 0.65 : emprende ? 0.45 : 0.85) - (formacion ? 0.1 : 0);
+      boolean interes = r.nextDouble() < pInteres;
+      t.interes = interes ? "SI" : "NO";
+      if (interes) {
+        double[] wa = {28, 8, 30, 18, 16}; // IA, Robótica, Ing. de Software, Base de Datos, Redes y Seguridad
+        if (a > 3) { wa[0] *= 0.7; wa[1] *= 0.5; wa[3] *= 1.3; wa[4] *= 1.2; }
+        if (org != null && org.publica()) { wa[0] *= 0.6; wa[3] *= 1.4; wa[4] *= 1.5; }
+        t.area = T.get("area")[pesos(r, wa)];
+        t.orgPosgrado = T.get("orgPosgrado")[pesos(r, 35, 25, 5, 15, 12, 8, 0)];
+      }
+
+      // Trayectoria y valoración de la formación.
+      int empleos = escala(1 + a / 5.0 + 0.7 * r.nextGaussian(), 4);
+      if ("SI".equals(t.primerEmpleo)) empleos = 1;
+      t.numEmpleos = T.get("numEmpleos")[empleos - 1];
+      t.tiempoPrimerTrabajo = T.get("tiempoPrimerTrabajo")[pesos(r, 25, 15, 25, 15, 10, 10)];
+      t.opinionPosgrado = escala(3.0 + 0.7 * r.nextGaussian(), 4);
+      t.satisfaccion = escala(animo + 0.4 * r.nextGaussian(), 4);
+      t.concordancia = escala(animo - 0.2 + 0.5 * r.nextGaussian(), 4);
+      t.redContactos = r.nextDouble() < 0.65 ? "SI" : "NO";
+
+      // Preguntas de elección múltiple, con opciones más y menos populares.
+      t.utiles = elige(r, T.get("utiles"), 2 + r.nextInt(2), 30, 10, 5, 30, 12, 13);
+      t.mejorar = elige(r, T.get("mejorar"), 2 + r.nextInt(2), 22, 28, 8, 22, 8, 12);
+      t.ventaja = elige(r, T.get("ventaja"), 5, 4, 22, 14, 14, 6, 12, 6, 16, 6);
+      t.pocoUtiles = elige(r, T.get("pocoUtiles"), 5, 10, 18, 14, 16, 8, 8, 6, 8, 8, 6, 12);
       tr.save(t);
     }
 
-    // ---- 6 empleadores ficticios ----
-    // Valores posibles de las afirmaciones: 3 y 2 son más frecuentes; 0 = "No sabe".
-    int[] esc = {3, 3, 3, 2, 2, 1, 0};
-    for (int i = 1; i <= 6; i++) {
+    // ---- Empleadores ficticios: uno por organización ----
+    // Cada empleador tiene una opinión propia; las afirmaciones de participación y consulta reciben menos acuerdo.
+    double[] ajuste = {0.2, 0.2, -0.5, -0.3, 0, 0.1, -0.5, 0.3, 0.4, -0.5, 0.1, -0.4, -0.5, -0.4, -0.4, -0.4, 0, -0.6};
+    String[] emergentes = {"Nube, IA, DevOps", "Ciberseguridad, datos", "Automatización, IoT", "Analítica de datos, IA", "Desarrollo móvil, nube"};
+    String[] herramientas = {"Git, Docker, plataformas cloud", "SQL, Power BI, Python", "Java, Spring, PostgreSQL", "Redes, Linux, virtualización"};
+    String[] competencias = {"Comunicación, trabajo en equipo, aprendizaje continuo", "Resolución de problemas, ética, responsabilidad", "Liderazgo, adaptación al cambio, inglés técnico"};
+    for (Org org : ORGS) {
       Empleador e = new Empleador();
       e.demo = true;
-      e.empresa = "Empresa demo " + i;
-      e.tipo = pk(r, "Público", "Privado");
-      e.tamano = pk(r, "Grande (100 funcionarios o más)", "Mediana (entre 31 a 99 funcionarios)", "Pequeña (entre 11 a 30 funcionarios)");
-      e.rubro = pk(r, "Desarrollo de software", "Servicios de tecnologías de información (TI)",
-          "Banca y servicios financieros", "Instituciones públicas / gobierno");
-      e.contrato = pk(r, "SI", "SI", "No");
-      e.proyeccion = pk(r, "Sí, existe una alta probabilidad de contratación",
-          "Sí, dependiendo del crecimiento o nuevos proyectos de la organización",
-          "No se tiene prevista la contratación actualmente");
-      e.nivelFormacion = pk(r, "Licenciatura", "Diplomado", "Maestría");
-      e.medio = pk(r, "Internet y Redes sociales", "Postulación competitiva (convocatorias públicas y privadas)", "Recomendación de terceros");
-      e.cargos = pk(r, "Analista (sistemas, datos, procesos o soluciones tecnológicas)",
-          "Técnico (desarrollo de software, administración de sistemas, redes, bases de datos, soporte TI)")
-          + "|Supervisor / Coordinador de área tecnológica";
-      e.areasEmergentes = "Nube, IA, DevOps";
-      e.herramientas = "Git, Docker, plataformas cloud";
-      e.competencias = "Comunicación, trabajo en equipo, aprendizaje continuo";
+      e.empresa = org.nombre();
+      e.tipo = E.get("tipo")[org.publica() ? 0 : 1];
+      e.tamano = E.get("tamano")[org.tamano()];
+      e.rubro = E.get("rubro")[org.rubroE()];
+      double pContrato = switch (org.tamano()) { case 0 -> 0.9; case 1 -> 0.7; case 2 -> 0.5; default -> 0.3; };
+      boolean contrata = r.nextDouble() < pContrato;
+      e.contrato = contrata ? "SI" : "No";
+      e.proyeccion = E.get("proyeccion")[contrata ? pesos(r, 40, 45, 15, 0) : pesos(r, 0, 25, 55, 20)];
+      e.nivelFormacion = E.get("nivelFormacion")[pesos(r, 60, 15, 5, 18, 2, 0)];
+      e.medio = E.get("medio")[org.publica() ? pesos(r, 5, 10, 65, 5, 15, 0) : pesos(r, 10, 40, 10, 10, 30, 0)];
+      e.cargos = elige(r, E.get("cargos"), 1 + r.nextInt(3), 15, 30, 28, 10, 10, 5, 2);
+      e.areasEmergentes = emergentes[r.nextInt(emergentes.length)];
+      e.herramientas = herramientas[r.nextInt(herramientas.length)];
+      e.competencias = competencias[r.nextInt(competencias.length)];
 
-      // Asigna un valor aleatorio a cada una de las 18 afirmaciones (por reflexión).
-      for (String n : AFIRM) {
+      double opinion = 2.35 + 0.35 * r.nextGaussian() - (org.publica() ? 0.1 : 0);
+      for (int k = 0; k < AFIRM.length; k++) {
+        int valor = escala(opinion + ajuste[k] + 0.45 * r.nextGaussian(), 3);
+        if (r.nextDouble() < (ajuste[k] < -0.3 ? 0.08 : 0.03)) valor = 0; // «No sabe»
         try {
-          Empleador.class.getField(n).set(e, esc[r.nextInt(esc.length)]);
+          Empleador.class.getField(AFIRM[k]).set(e, valor);
         } catch (Exception x) {
           throw new IllegalStateException(x);
         }

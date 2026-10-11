@@ -27,7 +27,7 @@ Cuando veas `Started ArcusurApp`, abre:
 Para detenerlo: `Ctrl + C`. Para generar un jar: `mvn clean package` y luego `java -jar target/arcusur-encuestas-1.0.jar`.
 
 ## 3. Cómo probarlo (2 minutos)
-1. Entra al **Panel** y pulsa **Cargar datos de demostración** (60 titulados y 6 empleadores ficticios).
+1. Entra al **Panel** y pulsa **Cargar datos de demostración** (150 titulados y 24 empleadores ficticios, con respuestas relacionadas entre sí; si lo pulsas de nuevo se reemplazan, no se duplican).
 2. Recorre las pestañas: **Resumen** (hallazgos principales), **Titulados**, **Empleadores**, **Pruebas estadísticas** (uniformidad y relaciones entre variables con χ²), **Simulación** y **Datos** (muestra, limpieza y descargas). Cada gráfico trae su lectura en palabras. Si aún no hay respuestas reales, el panel abre la demostración solo.
 3. Pulsa **Borrar datos de demostración**. Los datos ficticios **no deben usarse como datos de campo**.
 4. Llena una encuesta real en la página principal y mira cómo aparece en el panel. Exporta con los enlaces de descarga (ver sección 4).
@@ -53,7 +53,7 @@ Para detenerlo: `Ctrl + C`. Para generar un jar: `mvn clean package` y luego `ja
 | `/api/export/diccionario.csv` | Qué significa cada variable y qué limpieza recibe |
 | `/api/export/cruce/<id>.csv` | Matriz de un cruce: frecuencias, % por fila, esperados, residuos y χ² (`fin-nivel`, `area-sector`, `seg-area`, `int-sit`, `area-fin`) |
 
-Todos aceptan `?datos=reales|demo|todos` (por defecto `reales`) y `?sep=,` (por defecto `;`, que es el que espera Excel en español). El CSV de titulados incluye correo y teléfono: no lo publiques ni lo compartas.
+Todos aceptan `?datos=reales|demo|todos` (por defecto `reales`) y `?sep=,` (por defecto `;`, que es el que espera Excel en español). Para obtener los CSV con coma, agrega `?sep=,` a la URL de descarga. El CSV de titulados incluye correo y teléfono: no lo publiques ni lo compartas.
 
 ## 5. Estructura
 ```
@@ -68,7 +68,7 @@ src/main/resources/application.properties   configuración (puerto, base de dato
 ## 6. Problemas comunes
 - **`release version 17 not supported`**: tu JDK es anterior a 17. Instala JDK 17+ y revisa `JAVA_HOME`.
 - **El puerto 8080 está ocupado**: cambia `server.port` en `application.properties`.
-- **El CSV se abre en una sola columna en Excel**: descárgalo con el separador que corresponde a tu Excel (selector sobre las descargas).
+- **El CSV se abre en una sola columna en Excel**: el separador por defecto es `;` (Excel en español). Si tu Excel espera coma, agrega `?sep=,` a la URL de descarga.
 - **`mvn` no se reconoce**: agrega Maven al `PATH` o usa IntelliJ.
 - **Quiero empezar de cero**: detén la app y borra la carpeta `data/`.
 
