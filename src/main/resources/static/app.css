@@ -1,0 +1,24 @@
+/* Estilos del panel de análisis (dashboard.html) */
+:root{--ink:#16202e;--teal:#0f766e;--paper:#f4f6f8;--line:#d5dbe3;--amber:#b45309}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 "Segoe UI",system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+/* Encabezado y contenedor principal */
+header{background:var(--ink);color:#fff;padding:14px 20px;display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;font-weight:600;margin-right:auto}header a{color:#cfe8e5;text-decoration:none}header a:hover{text-decoration:underline}
+main{max-width:980px;margin:24px auto;padding:0 16px}
+h2{font-size:20px;margin:28px 0 10px}
+/* Cajas blancas (gráficos, tablas y formulario del simulador) */
+form,.box{background:#fff;border:1px solid var(--line);border-radius:6px;padding:18px;display:grid;gap:14px}
+label{display:grid;gap:4px;font-weight:600;font-size:14px}
+input,select{font:inherit;padding:8px;border:1px solid #9aa6b5;border-radius:4px;background:#fff}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--teal);outline-offset:1px}
+/* Botones: principal (verde) y secundario (.sec, blanco) */
+button{font:inherit;font-weight:600;background:var(--teal);color:#fff;border:0;border-radius:4px;padding:10px 16px;cursor:pointer}
+button.sec{background:#fff;color:var(--ink);border:1px solid #9aa6b5}
+.tabs{display:flex;gap:8px;margin-bottom:12px}.tabs button{background:#fff;color:var(--ink);border:1px solid #9aa6b5}.tabs button.on{background:var(--ink);color:#fff}
+/* Cuadrículas de gráficos y tarjetas de indicadores (.k) */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.k{background:#fff;border:1px solid var(--line);border-radius:6px;padding:12px;display:grid}.k b{font-size:26px}.k span{font-size:13px;color:#4a5668}
+/* Tablas del mapa de calor y de la simulación */
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid var(--line);padding:6px 8px;text-align:center}
+.warn{color:var(--amber);font-weight:600}.row{display:flex;gap:8px;flex-wrap:wrap}
+@media(prefers-reduced-motion:no-preference){button{transition:background .15s}}

@@ -1,0 +1,47 @@
+package arcusur;
+
+import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
+
+/**
+ * Respuesta de un titulado de Ingeniería de Sistemas a la encuesta.
+ * Cada objeto es una fila de la tabla {@code titulado}.
+ *
+ * Los campos opcionales dependen de las rutas condicionales del formulario:
+ * por ejemplo, "nivelPosgrado" solo se llena si "formacion" es SI.
+ */
+@Entity
+@Table(name = "titulado")
+public class Titulado {
+
+  /** Identificador autogenerado. */
+  @Id @GeneratedValue public Long id;
+
+  // ---- Campos obligatorios en todas las rutas ----
+  @NotBlank public String edad, genero, formacion, interes, situacion, tiempoPrimerTrabajo, numEmpleos, redContactos;
+
+  /** Años de vida profesional y años desempleado (0 a 60). Base de media, mediana y desviación estándar. */
+  @NotNull @DecimalMin("0") @DecimalMax("60") public Double aniosProfesionales, aniosDesempleado;
+
+  /** Escalas Likert de 4 niveles: 1 = Totalmente en desacuerdo ... 4 = Totalmente de acuerdo. */
+  @NotNull @Min(1) @Max(4) public Integer opinionPosgrado, satisfaccion, concordancia;
+
+  /** Pertinencia del puesto (Likert 1 a 4). Solo la responde quien trabaja en una organización. */
+  @Min(1) @Max(4) public Integer pertinencia;
+
+  // ---- Campos condicionales (rutas del formulario) ----
+  /** Formación complementaria (solo si formacion = SI). */
+  public String nivelPosgrado, dondeCurso, financiamiento, nombrePrograma;
+  /** Interés en posgrado (solo si interes = SI). */
+  public String area, orgPosgrado;
+  /** Datos del trabajo actual (solo si trabaja en una organización). */
+  public String empresa, rubro, sector, departamento, areaOrg, cargo, antiguedad, medio, remuneracion, primerEmpleo;
+  /** Datos de contacto opcionales. */
+  public String email, telefono, linkedin;
+
+  /** Preguntas de elección múltiple: las opciones elegidas van separadas por "|". */
+  @Column(length = 1500) public String utiles, mejorar, ventaja, pocoUtiles;
+
+  /** true si el registro es de demostración (ficticio); permite borrarlo sin tocar datos reales. */
+  public boolean demo;
+}
