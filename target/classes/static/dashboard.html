@@ -1,0 +1,86 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Panel de análisis</title><link rel="stylesheet" href="app.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script></head><body>
+<!-- Encabezado con enlaces a las encuestas y al panel -->
+<header><h1>Panel de análisis · Titulados y empleadores</h1><a href="index.html">Encuestas</a><a href="dashboard.html">Panel de análisis</a></header>
+<!-- Contenido: botones de datos, resumen, gráficos y simulador. Los gráficos se dibujan con Chart.js en <canvas>. -->
+<main>
+<!-- Botones: cargar/borrar datos ficticios y exportar a CSV (Excel) -->
+<div class="row"><button id="demo">Cargar datos de demostración</button><button class="sec" id="borrar">Borrar datos de demostración</button>
+<a href="/api/export/titulados.csv" download="titulados.csv"><button class="sec">Exportar titulados (CSV)</button></a>
+<a href="/api/export/empleadores.csv" download="empleadores.csv"><button class="sec">Exportar empleadores (CSV)</button></a></div>
+<p class="warn" id="aviso" hidden>Hay datos de demostración (ficticios). Bórrelos antes de analizar datos reales.</p>
+<!-- Indicadores generales -->
+<h2>Resumen</h2><div class="grid" id="kpi"></div>
+<!-- Titulados: áreas de interés y nivel de posgrado -->
+<h2>Áreas de interés y nivel de posgrado</h2><div class="grid"><div class="box"><canvas id="cArea"></canvas></div><div class="box"><canvas id="cNivel"></canvas></div></div>
+<h2>Valoraciones de titulados (media, escala 1 a 4)</h2><div class="grid"><div class="box"><canvas id="cRadT"></canvas></div></div>
+<!-- Empleadores: perfil de las organizaciones y empleabilidad -->
+<h2>Empleadores: organización y empleabilidad</h2>
+<div class="grid"><div class="box"><canvas id="cTam"></canvas></div><div class="box"><canvas id="cRubE"></canvas></div></div>
+<div class="grid"><div class="box"><canvas id="cProy"></canvas></div><div class="box"><canvas id="cNivE"></canvas></div></div>
+<div class="grid"><div class="box"><canvas id="cMedE"></canvas></div><div class="box"><canvas id="cCarE"></canvas></div></div>
+<!-- Empleadores: media de las 18 afirmaciones (escala 1 a 3) -->
+<h2>Empleadores: valoración de la Carrera (media, escala 1 a 3; «No sabe» se excluye)</h2>
+<div class="grid"><div class="box"><canvas id="cFP"></canvas></div><div class="box"><canvas id="cVC"></canvas></div></div>
+<div class="box" id="nsE"></div>
+<!-- Titulados: aspectos útiles y a mejorar -->
+<h2>Aspectos de la Carrera</h2><div class="grid"><div class="box"><canvas id="cUtil"></canvas></div><div class="box"><canvas id="cMej"></canvas></div></div>
+<!-- Titulados: asignaturas con ventaja competitiva y poco útiles -->
+<h2>Asignaturas</h2><div class="grid"><div class="box"><canvas id="cVen"></canvas></div><div class="box"><canvas id="cPoco"></canvas></div></div>
+<!-- Mapa de calor con la prueba Chi-cuadrado -->
+<h2>Financiamiento × nivel de posgrado</h2><div class="box" id="heat">Sin datos.</div>
+<!-- Simulador Monte Carlo: compara el escenario base con el escenario con becas -->
+<h2>Escenarios de simulación (Monte Carlo)</h2>
+<form id="sim"><div class="grid">
+<label>Titulados potenciales<input id="pob" type="number" value="300" min="1"></label>
+<label>Probabilidad de interés<input id="pi" type="number" step="0.01" min="0" max="1" value="0.6"></label>
+<label>Probabilidad de inscripción (base)<input id="pr" type="number" step="0.01" min="0" max="1" value="0.3"></label>
+<label>Aumento por becas (puntos)<input id="bono" type="number" step="0.01" min="0" max="1" value="0.1"></label>
+<label>Mínimo de inscritos para abrir<input id="mn" type="number" value="25" min="1"></label></div>
+<button>Simular escenarios</button><div id="simres"></div></form>
+</main>
+<script>
+// ---- Utilidades de gráficos ----
+// $(id): atajo para buscar un elemento. ch: guarda los gráficos creados para poder redibujarlos.
+const $=id=>document.getElementById(id),ch={};
+// graf(): dibuja un gráfico Chart.js. type = "bar" (columnas), "barh" (barras horizontales) o "radar".
+// Si fijo = true, el eje del valor va de 0 a mx (se usa en las medias Likert); si no, se ajusta solo (se usa en conteos).
+function graf(id,type,labels,data,label,mx=5,fijo=false){if(ch[id])ch[id].destroy();if(!window.Chart)return;const h=type=="barh";
+ch[id]=new Chart($(id),{type:h?"bar":type,data:{labels,datasets:[{label,data,backgroundColor:"rgba(15,118,110,.55)",borderColor:"#0f766e"}]},
+options:type=="radar"?{scales:{r:{min:0,max:mx}}}:{indexAxis:h?"y":"x",scales:fijo?{[h?"x":"y"]:{min:0,max:mx}}:undefined,plugins:{legend:{display:false},title:{display:true,text:label}}}})}
+// Etiquetas cortas de las afirmaciones de empleadores (el texto completo está en index.html)
+const FPL={fp1:"Confianza en la Carrera como formadora",fp2:"Título consistente con las competencias",fp3:"Autoridades nos consultan (perfil)",fp4:"Conozco el perfil de egreso",fp5:"Perfil coherente con el desempeño",fp6:"Formación permite desempeño destacado",fp7:"Carrera incorpora nuestra opinión",fp8:"Competencias laborales demostradas",fp9:"Valores y ética demostrados",fp10:"Participé en recopilación de información"},
+VCL={vc1:"Vínculos que generan oportunidades",vc2:"Participé en vinculación con el entorno",vc3:"Participé en difusión de oportunidades",vc4:"Participé en vinculación entre actores",vc5:"Me consultaron sobre el desempeño",vc6:"Me consultaron sobre la pertinencia",vc7:"Recurrimos a la UMSS para buscar talento",vc8:"Consultado en autoevaluación"};
+// heat(): arma la tabla de contingencia como mapa de calor (más oscuro = más casos) e interpreta el Chi-cuadrado con alfa = 0,05.
+function heat(c){if(!c)return"Sin datos.";const mx=Math.max(1,...c.matriz.flat());
+return `<table><tr><th></th>${c.columnas.map(x=>`<th>${x}</th>`).join("")}</tr>${c.filas.map((f,i)=>`<tr><th>${f}</th>${c.matriz[i].map(v=>`<td style="background:rgba(15,118,110,${v/mx*.8})">${v}</td>`).join("")}</tr>`).join("")}</table>
+<p>${c.chi2!==undefined?`χ² = ${c.chi2}, gl = ${c.gl}, p = ${c.p}. ${c.p<.05?"Hay evidencia de dependencia (α = 0,05).":"No hay evidencia de dependencia (α = 0,05)."} Con muestras pequeñas, interprete con cautela.`:(c.aviso||"")}</p>`}
+// cargar(): pide las estadísticas a /api/stats y actualiza indicadores y gráficos.
+async function cargar(){const s=await(await fetch("/api/stats")).json();
+$("kpi").innerHTML=[["Titulados encuestados",s.nTitulados],["Empleadores encuestados",s.nEmpleadores],["Años de vida profesional (media ± desv.)",s.anios?s.anios.media+" ± "+s.anios.sd:"–"],["Juniors (≤3 años) / consolidados",s.anios?s.junior+" / "+s.consolidado:"–"]].map(([a,b])=>`<div class="k"><b>${b}</b><span>${a}</span></div>`).join("");
+if(s.nTitulados){graf("cArea","bar",Object.keys(s.area),Object.values(s.area),"Área de posgrado de interés");
+graf("cNivel","bar",Object.keys(s.nivelPosgrado),Object.values(s.nivelPosgrado),"Mayor formación complementaria");
+graf("cRadT","radar",Object.keys(s.likertT),Object.values(s.likertT).map(x=>x.media),"Titulados",4);graf("cUtil","barh",Object.keys(s.utiles),Object.values(s.utiles),"Aspectos más útiles");graf("cMej","barh",Object.keys(s.mejorar),Object.values(s.mejorar),"Aspectos a mejorar");graf("cVen","barh",Object.keys(s.ventaja),Object.values(s.ventaja),"Asignaturas con ventaja competitiva");graf("cPoco","barh",Object.keys(s.pocoUtiles),Object.values(s.pocoUtiles),"Asignaturas poco útiles");$("pi").value=s.pctInteres||0.6}
+if(s.nEmpleadores){const L=s.likertE,ks=(M)=>Object.keys(M).filter(k=>L[k]);
+graf("cTam","bar",Object.keys(s.tamanoE),Object.values(s.tamanoE),"Tamaño de la organización");graf("cRubE","barh",Object.keys(s.rubroE),Object.values(s.rubroE),"Rubro o sector");
+graf("cProy","barh",Object.keys(s.proyeccionE),Object.values(s.proyeccionE),"Posibilidad de contratar");graf("cNivE","bar",Object.keys(s.nivelFormacionE),Object.values(s.nivelFormacionE),"Nivel de formación que demandan");
+graf("cMedE","barh",Object.keys(s.medioE),Object.values(s.medioE),"Medio de convocatoria");graf("cCarE","barh",Object.keys(s.cargosE),Object.values(s.cargosE),"Cargos de los titulados");
+graf("cFP","barh",ks(FPL).map(k=>FPL[k]),ks(FPL).map(k=>L[k].media),"Formación y perfil profesional",3,true);
+graf("cVC","barh",ks(VCL).map(k=>VCL[k]),ks(VCL).map(k=>L[k].media),"Relación Carrera–organización",3,true);
+const ns=Object.keys(L).reduce((a,k)=>a+L[k].noSabe,0),tot=Object.keys(L).reduce((a,k)=>a+L[k].n+L[k].noSabe,0);
+$("nsE").textContent=`«No sabe»: ${ns} de ${tot} respuestas (${tot?Math.round(ns/tot*100):0} %). Las preguntas 10 a 12 (respuestas abiertas) se revisan en la exportación CSV.`}
+$("heat").innerHTML=heat(s.cruce)}
+// call(): envía parámetros a /api/simulacion y devuelve el resultado.
+async function call(b){return(await fetch("/api/simulacion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json()}
+// Simulación: calcula el escenario base y otro con mayor probabilidad de inscripción (efecto de las becas).
+$("sim").onsubmit=async e=>{e.preventDefault();const b={poblacion:+$("pob").value,probInteres:+$("pi").value,probInscribe:+$("pr").value,minimo:+$("mn").value,iteraciones:5000};
+const a=await call(b),c=await call({...b,probInscribe:Math.min(1,b.probInscribe+ +$("bono").value)});
+const fila=(n,x)=>`<tr><td>${n}</td><td>${x.media}</td><td>${x.p5} – ${x.p95}</td><td>${Math.round(x.probApertura*100)} %</td></tr>`;
+$("simres").innerHTML=`<table><tr><th>Escenario</th><th>Inscritos (media)</th><th>Rango 90 %</th><th>Prob. de abrir</th></tr>${fila("Base",a)}${fila("Con becas",c)}</table>`};
+// Botones de datos de demostración.
+$("demo").onclick=async()=>{await fetch("/api/seed",{method:"POST"});$("aviso").hidden=false;cargar()};
+$("borrar").onclick=async()=>{await fetch("/api/reset",{method:"DELETE"});$("aviso").hidden=true;cargar()};
+// Carga inicial al abrir el panel.
+cargar();
+</script></body></html>
