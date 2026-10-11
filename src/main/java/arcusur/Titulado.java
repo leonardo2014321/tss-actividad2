@@ -18,7 +18,7 @@ public class Titulado {
   @Id @GeneratedValue public Long id;
 
   // ---- Campos obligatorios en todas las rutas ----
-  @NotBlank public String edad, genero, formacion, interes, situacion, tiempoPrimerTrabajo, numEmpleos, redContactos;
+  @NotBlank @Size(max = 255) public String edad, genero, formacion, interes, situacion, tiempoPrimerTrabajo, numEmpleos, redContactos;
 
   /** Años de vida profesional y años desempleado (0 a 60). Base de media, mediana y desviación estándar. */
   @NotNull @DecimalMin("0") @DecimalMax("60") public Double aniosProfesionales, aniosDesempleado;
@@ -31,16 +31,16 @@ public class Titulado {
 
   // ---- Campos condicionales (rutas del formulario) ----
   /** Formación complementaria (solo si formacion = SI). */
-  public String nivelPosgrado, dondeCurso, financiamiento, nombrePrograma;
+  @Size(max = 255) public String nivelPosgrado, dondeCurso, financiamiento, nombrePrograma;
   /** Interés en posgrado (solo si interes = SI). */
-  public String area, orgPosgrado;
+  @Size(max = 255) public String area, orgPosgrado;
   /** Datos del trabajo actual (solo si trabaja en una organización). */
-  public String empresa, rubro, sector, departamento, areaOrg, cargo, antiguedad, medio, remuneracion, primerEmpleo;
+  @Size(max = 255) public String empresa, rubro, sector, departamento, areaOrg, cargo, antiguedad, medio, remuneracion, primerEmpleo;
   /** Datos de contacto opcionales. */
-  public String email, telefono, linkedin;
+  @Size(max = 255) public String email, telefono, linkedin;
 
   /** Preguntas de elección múltiple: las opciones elegidas van separadas por "|". */
-  @Column(length = 1500) public String utiles, mejorar, ventaja, pocoUtiles;
+  @Size(max = 1500) @Column(length = 1500) public String utiles, mejorar, ventaja, pocoUtiles;
 
   /** true si el registro es de demostración (ficticio); permite borrarlo sin tocar datos reales. */
   public boolean demo;

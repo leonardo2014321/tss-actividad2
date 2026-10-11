@@ -1,24 +1,28 @@
 package arcusur;
 
+import arcusur.Estadistica.Cruce;
+import arcusur.Estadistica.Dist;
 import jakarta.validation.Valid;
-import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.*;
 import org.apache.commons.math3.distribution.BinomialDistribution;
 import org.apache.commons.math3.random.JDKRandomGenerator;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
-import org.apache.commons.math3.stat.inference.ChiSquareTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * API REST de la aplicación. Todas las rutas empiezan con /api.
  *
  *  - POST /api/titulados y /api/empleadores : guardan una respuesta de encuesta.
- *  - GET  /api/stats                        : estadísticas para el panel de análisis.
- *  - POST /api/simulacion                   : simulación Monte Carlo de inscritos a un posgrado.
- *  - GET  /api/export/*.csv                 : exportación de datos (se abre en Excel).
- *  - POST /api/seed y DELETE /api/reset     : datos de demostración (ficticios).
+ *  - GET  /api/stats?datos=reales|demo|todos : estadísticas para el panel de análisis.
+ *  - POST /api/simulacion                    : simulación Monte Carlo de inscritos a un posgrado.
+ *  - GET  /api/export/...                    : CSV limpio, crudo, diccionario y matrices de cruce.
+ *  - POST /api/seed y DELETE /api/reset      : datos de demostración (ficticios).
+ *
+ * Los cálculos están en {@link Estadistica} y los archivos CSV en {@link Exportacion}.
  */
 @RestController
 @RequestMapping("/api")
@@ -54,49 +58,19 @@ public class Api {
   }
 
   // =====================================================================
-  // 2. FUNCIONES AUXILIARES DE ESTADÍSTICA
+  // 2. DEFINICIONES COMUNES
   // =====================================================================
 
-  /** Redondea a 2 decimales; un valor no numérico (NaN) se devuelve como 0. */
-  static double r(double v) {
-    return Double.isNaN(v) ? 0 : Math.round(v * 100) / 100.0;
-  }
+  /** Preguntas de opción única (listas cerradas): se les unifica el formato al limpiar y exportar. */
+  static final String[] CAT_T = {"edad", "genero", "formacion", "interes", "situacion", "tiempoPrimerTrabajo", "numEmpleos",
+    "redContactos", "nivelPosgrado", "dondeCurso", "financiamiento", "area", "orgPosgrado", "rubro", "sector", "departamento",
+    "areaOrg", "cargo", "antiguedad", "medio", "remuneracion", "primerEmpleo"};
+  /** Preguntas de elección múltiple de titulados (opciones unidas con "|"). */
+  static final String[] MULTI_T = {"utiles", "mejorar", "ventaja", "pocoUtiles"};
+  static final String[] CAT_E = {"tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion", "medio"};
+  static final String[] MULTI_E = {"cargos"};
 
-  /** Tabla de frecuencias de una pregunta de opción única: opción -> cantidad de respuestas. */
-  static <T> Map<String, Long> freq(List<T> l, Function<T, String> f) {
-    return l.stream().map(f)
-        .filter(x -> x != null && !x.isBlank())
-        .collect(Collectors.groupingBy(x -> x, TreeMap::new, Collectors.counting()));
-  }
-
-  /**
-   * Tabla de frecuencias de una pregunta de elección múltiple.
-   * Las opciones de una misma respuesta vienen unidas con "|", así que se separan y se cuentan una a una.
-   * Los textos libres ("Otra: ...") se agrupan bajo la etiqueta "Otra".
-   */
-  static <T> Map<String, Long> fm(List<T> l, Function<T, String> f) {
-    return l.stream().map(f).filter(Objects::nonNull)
-        .flatMap(s -> Arrays.stream(s.split("\\|")))
-        .map(String::trim)
-        .filter(x -> !x.isEmpty())
-        .map(x -> x.startsWith("Otra") ? "Otra" : x)
-        .collect(Collectors.groupingBy(x -> x, TreeMap::new, Collectors.counting()));
-  }
-
-  /** Media y desviación estándar de una serie de valores Likert. */
-  static Map<String, Double> lk(double[] v) {
-    DescriptiveStatistics d = new DescriptiveStatistics(v);
-    return Map.of("media", r(d.getMean()), "sd", r(d.getStandardDeviation()));
-  }
-
-  /** Extrae una columna numérica (Integer) de la lista de titulados, ignorando los valores vacíos. */
-  static double[] arr(List<Titulado> l, Function<Titulado, Integer> f) {
-    return l.stream().map(f).filter(Objects::nonNull).mapToDouble(Integer::doubleValue).toArray();
-  }
-
-  // ---- Afirmaciones de la encuesta de empleadores ----
-
-  /** Nombres de los 18 campos de afirmaciones: fp1..fp10 (formación y perfil) y vc1..vc8 (vinculación). */
+  /** Nombres de los 18 campos de afirmaciones de empleadores: fp1..fp10 (formación y perfil) y vc1..vc8 (vinculación). */
   static final String[] AFIRM = {
     "fp1", "fp2", "fp3", "fp4", "fp5", "fp6", "fp7", "fp8", "fp9", "fp10",
     "vc1", "vc2", "vc3", "vc4", "vc5", "vc6", "vc7", "vc8"
@@ -104,138 +78,211 @@ public class Api {
 
   /** Lee por nombre un campo Integer de un empleador (por reflexión). Sirve para recorrer AFIRM en un bucle. */
   static Integer ig(Empleador e, String n) {
-    try {
-      return (Integer) Empleador.class.getField(n).get(e);
-    } catch (Exception x) {
-      throw new IllegalStateException(x);
-    }
+    return (Integer) Exportacion.valor(e, n);
   }
 
-  /**
-   * Resumen de una afirmación de empleadores (escala 1 a 3).
-   * El valor 0 significa "No sabe": se cuenta aparte y NO entra en la media ni en la desviación.
-   * Devuelve: media, sd, n (respuestas válidas) y noSabe (cantidad de "No sabe").
-   */
-  static Map<String, Object> lkE(List<Empleador> es, String n) {
-    List<Integer> vs = es.stream().map(e -> ig(e, n)).filter(Objects::nonNull).toList();
-    double[] v = vs.stream().filter(x -> x > 0).mapToDouble(Integer::doubleValue).toArray();
-    DescriptiveStatistics d = new DescriptiveStatistics(v);
-    Map<String, Object> o = new LinkedHashMap<>();
-    o.put("media", r(d.getMean()));
-    o.put("sd", r(d.getStandardDeviation()));
-    o.put("n", v.length);
-    o.put("noSabe", vs.stream().filter(x -> x == 0).count());
-    return o;
+  /** Segmento de madurez profesional: junior (hasta 3 años) o consolidado (más de 3 años). */
+  static String segmento(Titulado t) {
+    return t.aniosProfesionales <= 3 ? "Junior (hasta 3 años)" : "Consolidado (más de 3 años)";
   }
 
-  /**
-   * Tabla de contingencia entre dos variables categóricas de titulados y prueba Chi-cuadrado de independencia.
-   * Devuelve filas, columnas, matriz de conteos y, si la muestra alcanza, chi2, p y grados de libertad (gl).
-   */
-  static Map<String, Object> cruce(List<Titulado> ts, Function<Titulado, String> f, Function<Titulado, String> c) {
-    List<String> fs = ts.stream().map(f).distinct().sorted().toList();
-    List<String> cs = ts.stream().map(c).distinct().sorted().toList();
+  /** Definición de un cruce de variables del panel. */
+  record Def(String id, String titulo, String filas, String cols,
+      Function<Titulado, String> f, Function<Titulado, String> c, String ordF, String ordC) {}
 
-    // Se cuenta cuántos titulados caen en cada combinación fila x columna.
-    long[][] mat = new long[fs.size()][cs.size()];
-    for (Titulado t : ts) {
-      mat[fs.indexOf(f.apply(t))][cs.indexOf(c.apply(t))]++;
-    }
+  /** Cruces que calcula el panel. El primero es el que pide la historia de usuario 3 (financiamiento × posgrado). */
+  static final List<Def> CRUCES = List.of(
+      new Def("fin-nivel", "Fuente de financiamiento × nivel de formación complementaria", "Financiamiento", "Nivel de formación",
+          t -> t.financiamiento, t -> t.nivelPosgrado, null, "nivelPosgrado"),
+      new Def("area-sector", "Área de posgrado de interés × sector donde trabaja", "Área de interés", "Sector",
+          t -> t.area, t -> t.sector, null, null),
+      new Def("seg-area", "Madurez profesional × área de posgrado de interés", "Segmento", "Área de interés",
+          Api::segmento, t -> t.area, null, null),
+      new Def("int-sit", "Interés en un posgrado × situación laboral", "Interés en posgrado", "Situación laboral",
+          t -> t.interes, t -> t.situacion, null, null),
+      new Def("area-fin", "Área de posgrado de interés × fuente de financiamiento", "Área de interés", "Financiamiento",
+          t -> t.area, t -> t.financiamiento, null, null));
 
-    Map<String, Object> o = new LinkedHashMap<>();
-    o.put("filas", fs);
-    o.put("columnas", cs);
-    o.put("matriz", mat);
+  /** Indica si un registro entra según el filtro: reales (por defecto), demo o todos. */
+  static boolean acepta(String datos, boolean demo) {
+    return "todos".equals(datos) || ("demo".equals(datos) ? demo : !demo);
+  }
 
-    // La prueba necesita al menos 2 categorías en cada variable.
-    if (fs.size() > 1 && cs.size() > 1) {
-      try {
-        ChiSquareTest x = new ChiSquareTest();
-        o.put("chi2", r(x.chiSquare(mat)));
-        o.put("p", Math.round(x.chiSquareTest(mat) * 10000) / 10000.0);
-        o.put("gl", (fs.size() - 1) * (cs.size() - 1));
-      } catch (Exception e) {
-        o.put("aviso", "Muestra insuficiente para calcular χ².");
+  private List<Titulado> titulados(String datos) {
+    return tr.findAll().stream().filter(t -> acepta(datos, t.demo)).collect(Collectors.toList());
+  }
+
+  private List<Empleador> empleadores(String datos) {
+    return er.findAll().stream().filter(e -> acepta(datos, e.demo)).collect(Collectors.toList());
+  }
+
+  private static char separador(String sep) {
+    return ",".equals(sep) ? ',' : ';';
+  }
+
+  // =====================================================================
+  // 3. CALIDAD DE LOS DATOS Y MUESTRA
+  // =====================================================================
+
+  /** Registros que coinciden en todas las respuestas (posibles envíos repetidos). */
+  private static long duplicados(List<?> l) {
+    Set<String> vistos = new HashSet<>();
+    long dup = 0;
+    for (Object o : l) {
+      StringBuilder firma = new StringBuilder();
+      for (java.lang.reflect.Field f : o.getClass().getFields()) {
+        if (f.getName().equals("id") || f.getName().equals("demo")) continue;
+        Object v = Exportacion.valor(o, f);
+        firma.append(v instanceof String str ? Estadistica.clave(str) : v).append('¦'); // ignora mayúsculas y tildes
       }
-    } else {
-      o.put("aviso", "Se necesitan al menos 2 categorías en cada variable.");
+      if (!vistos.add(firma.toString())) dup++;
     }
-    return o;
+    return dup;
+  }
+
+  /** Variantes de escritura (mayúsculas, tildes, espacios) que la limpieza unifica en las preguntas cerradas. */
+  private static long unificadas(List<?> l, String[] campos) {
+    long n = 0;
+    for (String c : campos) {
+      Set<String> exactos = new HashSet<>(), claves = new HashSet<>();
+      for (Object o : l) {
+        String v = (String) Exportacion.valor(o, c);
+        if (v == null || v.isBlank() || Estadistica.etiqueta(v).startsWith("Otro (")) continue;
+        exactos.add(v.trim());
+        claves.add(Estadistica.clave(v));
+      }
+      n += exactos.size() - claves.size();
+    }
+    return n;
+  }
+
+  /** Margen de error de una proporción (95 %, p = 0,5) en puntos porcentuales. Es referencial: supone muestra aleatoria. */
+  private static double margen(long n) {
+    return n == 0 ? 0 : Estadistica.r1(1.96 * Math.sqrt(0.25 / n) * 100);
   }
 
   // =====================================================================
-  // 3. ESTADÍSTICAS PARA EL PANEL
+  // 4. ESTADÍSTICAS PARA EL PANEL
   // =====================================================================
 
-  /** Calcula todas las estadísticas que muestra el panel de análisis (dashboard.html). */
+  /** Calcula todas las estadísticas del panel (dashboard.html). datos: reales (defecto), demo o todos. */
   @GetMapping("/stats")
-  public Map<String, Object> stats() {
-    List<Titulado> ts = tr.findAll();
-    List<Empleador> es = er.findAll();
+  public Map<String, Object> stats(@RequestParam(defaultValue = "reales") String datos) {
+    List<Titulado> todosT = tr.findAll();
+    List<Empleador> todosE = er.findAll();
+    List<Titulado> ts = todosT.stream().filter(t -> acepta(datos, t.demo)).collect(Collectors.toList());
+    List<Empleador> es = todosE.stream().filter(e -> acepta(datos, e.demo)).collect(Collectors.toList());
+
     Map<String, Object> m = new LinkedHashMap<>();
+    m.put("datos", datos);
     m.put("nTitulados", ts.size());
     m.put("nEmpleadores", es.size());
+    m.put("disponibles", Map.of(
+        "reales", todosT.stream().filter(t -> !t.demo).count() + todosE.stream().filter(e -> !e.demo).count(),
+        "demo", todosT.stream().filter(t -> t.demo).count() + todosE.stream().filter(e -> e.demo).count()));
+
+    // ---- Muestra: tamaño, margen de error y respaldo de campo (empresas) ----
+    Map<String, String> empresas = new TreeMap<>(); // clave de la empresa -> "Público" / "Privado" / "Sin dato"
+    Map<String, String> nombres = new HashMap<>();
+    for (Empleador e : es) {
+      String k = Estadistica.clave(e.empresa);
+      nombres.putIfAbsent(k, e.empresa.trim());
+      empresas.merge(k, Estadistica.etiqueta(e.tipo), (a, b) -> a);
+    }
+    for (Titulado t : ts) {
+      if (t.empresa == null || t.empresa.isBlank()) continue;
+      String k = Estadistica.clave(t.empresa);
+      nombres.putIfAbsent(k, t.empresa.trim());
+      empresas.merge(k, t.sector == null ? "Sin dato" : Estadistica.etiqueta(t.sector), (a, b) -> a.equals("Sin dato") ? b : a);
+    }
+    long pub = empresas.values().stream().filter(v -> Estadistica.clave(v).equals("publico")).count();
+    long pri = empresas.values().stream().filter(v -> Estadistica.clave(v).equals("privado")).count();
+    Map<String, Object> mu = new LinkedHashMap<>();
+    mu.put("margenTitulados", margen(ts.size()));
+    mu.put("margenEmpleadores", margen(es.size()));
+    mu.put("empresas", empresas.size());
+    mu.put("empresasPublicas", pub);
+    mu.put("empresasPrivadas", pri);
+    mu.put("cumpleEmpresas", empresas.size() >= 3 && pub >= 1 && pri >= 1);
+    mu.put("listaEmpresas", empresas.entrySet().stream()
+        .map(e -> Map.of("nombre", nombres.get(e.getKey()), "tipo", e.getValue())).collect(Collectors.toList()));
+    m.put("muestra", mu);
+
+    // ---- Calidad de los datos (resultado de la etapa de limpieza) ----
+    double[] anios = ts.stream().mapToDouble(t -> t.aniosProfesionales).toArray();
+    Map<String, Object> q = new LinkedHashMap<>();
+    q.put("duplicadosTitulados", duplicados(ts));
+    q.put("duplicadosEmpleadores", duplicados(es));
+    q.put("incoherentes", ts.stream().filter(t -> t.aniosDesempleado > t.aniosProfesionales).count());
+    q.put("atipicos", Estadistica.atipicos(anios));
+    q.put("categoriasUnificadas", unificadas(ts, CAT_T) + unificadas(es, CAT_E));
+    q.put("otrasEspecificadas", ts.stream().flatMap(t -> Arrays.stream(CAT_T).map(c -> (String) Exportacion.valor(t, c)))
+        .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count()
+        + es.stream().flatMap(e -> Arrays.stream(CAT_E).map(c -> (String) Exportacion.valor(e, c)))
+        .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count());
+    m.put("calidad", q);
 
     // ---- Titulados ----
     if (!ts.isEmpty()) {
-      // Antigüedad profesional: media, mediana y desviación estándar.
-      DescriptiveStatistics d = new DescriptiveStatistics(ts.stream().mapToDouble(t -> t.aniosProfesionales).toArray());
-      m.put("anios", Map.of("media", r(d.getMean()), "mediana", r(d.getPercentile(50)), "sd", r(d.getStandardDeviation())));
-
-      // Segmentación: junior (hasta 3 años) frente a consolidado (más de 3 años).
+      m.put("anios", Estadistica.desc(anios));
+      m.put("aniosHist", Estadistica.histAnios(anios));
       m.put("junior", ts.stream().filter(t -> t.aniosProfesionales <= 3).count());
       m.put("consolidado", ts.stream().filter(t -> t.aniosProfesionales > 3).count());
+      m.put("pctInteres", Estadistica.r(ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / ts.size()));
 
-      // Proporción de titulados interesados en un posgrado (0 a 1).
-      m.put("pctInteres", r(ts.stream().filter(t -> "SI".equals(t.interes)).count() * 1.0 / ts.size()));
+      Map<String, Dist> d = new LinkedHashMap<>();
+      d.put("edad", Estadistica.dist(ts, t -> t.edad, false, "edad"));
+      d.put("genero", Estadistica.dist(ts, t -> t.genero, false, "genero"));
+      d.put("situacion", Estadistica.dist(ts, t -> t.situacion, false, "situacion"));
+      d.put("tiempoPrimerTrabajo", Estadistica.dist(ts, t -> t.tiempoPrimerTrabajo, false, "tiempoPrimerTrabajo"));
+      d.put("numEmpleos", Estadistica.dist(ts, t -> t.numEmpleos, false, "numEmpleos"));
+      d.put("nivelPosgrado", Estadistica.dist(ts, t -> t.nivelPosgrado, false, "nivelPosgrado"));
+      d.put("financiamiento", Estadistica.dist(ts, t -> t.financiamiento, false, "financiamiento"));
+      d.put("area", Estadistica.dist(ts, t -> t.area, false, "area"));
+      d.put("orgPosgrado", Estadistica.dist(ts, t -> t.orgPosgrado, false, "orgPosgrado"));
+      d.put("rubro", Estadistica.dist(ts, t -> t.rubro, false, "rubro"));
+      d.put("sector", Estadistica.dist(ts, t -> t.sector, false, "sector"));
+      d.put("departamento", Estadistica.dist(ts, t -> t.departamento, false, "departamento"));
+      d.put("remuneracion", Estadistica.dist(ts, t -> t.remuneracion, false, "remuneracion"));
+      d.put("utiles", Estadistica.dist(ts, t -> t.utiles, true, "utiles"));
+      d.put("mejorar", Estadistica.dist(ts, t -> t.mejorar, true, "mejorar"));
+      d.put("ventaja", Estadistica.dist(ts, t -> t.ventaja, true, "ventaja"));
+      d.put("pocoUtiles", Estadistica.dist(ts, t -> t.pocoUtiles, true, "pocoUtiles"));
+      m.put("distT", d);
 
-      // Distribuciones de frecuencia de preguntas de opción única.
-      m.put("situacion", freq(ts, t -> t.situacion));
-      m.put("area", freq(ts, t -> t.area));
-      m.put("nivelPosgrado", freq(ts, t -> t.nivelPosgrado));
-      m.put("financiamiento", freq(ts, t -> t.financiamiento));
-      m.put("sector", freq(ts, t -> t.sector));
-      m.put("departamento", freq(ts, t -> t.departamento));
-      m.put("remuneracion", freq(ts, t -> t.remuneracion));
-      m.put("tiempoPrimerTrabajo", freq(ts, t -> t.tiempoPrimerTrabajo));
-
-      // Preguntas de elección múltiple.
-      m.put("utiles", fm(ts, t -> t.utiles));
-      m.put("mejorar", fm(ts, t -> t.mejorar));
-      m.put("ventaja", fm(ts, t -> t.ventaja));
-      m.put("pocoUtiles", fm(ts, t -> t.pocoUtiles));
-
-      // Escalas Likert (1 a 4): media y desviación estándar.
+      // Escalas Likert de 4 niveles (1 = totalmente en desacuerdo ... 4 = totalmente de acuerdo).
       Map<String, Object> lt = new LinkedHashMap<>();
-      lt.put("Posgrado FCyT afín", lk(arr(ts, t -> t.opinionPosgrado)));
-      if (arr(ts, t -> t.pertinencia).length > 0) {
-        lt.put("Trabajo pertinente", lk(arr(ts, t -> t.pertinencia)));
-      }
-      lt.put("Satisfacción", lk(arr(ts, t -> t.satisfaccion)));
-      lt.put("Concordancia", lk(arr(ts, t -> t.concordancia)));
+      lt.put("opinionPosgrado", Estadistica.lik(ts.stream().map(t -> t.opinionPosgrado).collect(Collectors.toList()), 4));
+      lt.put("pertinencia", Estadistica.lik(ts.stream().map(t -> t.pertinencia).collect(Collectors.toList()), 4));
+      lt.put("satisfaccion", Estadistica.lik(ts.stream().map(t -> t.satisfaccion).collect(Collectors.toList()), 4));
+      lt.put("concordancia", Estadistica.lik(ts.stream().map(t -> t.concordancia).collect(Collectors.toList()), 4));
       m.put("likertT", lt);
 
-      // Financiamiento x nivel de posgrado (mapa de calor + Chi-cuadrado).
-      m.put("cruce", cruce(
-          ts.stream().filter(t -> t.financiamiento != null && t.nivelPosgrado != null).toList(),
-          t -> t.financiamiento,
-          t -> t.nivelPosgrado));
+      // Cruces de variables con Chi-cuadrado.
+      Map<String, Cruce> cr = new LinkedHashMap<>();
+      for (Def c : CRUCES) {
+        cr.put(c.id(), Estadistica.cruce(c.id(), c.titulo(), c.filas(), c.cols(), ts, c.f(), c.c(), c.ordF(), c.ordC()));
+      }
+      m.put("cruces", cr);
     }
 
     // ---- Empleadores ----
     if (!es.isEmpty()) {
-      m.put("tamanoE", freq(es, e -> e.tamano));
-      m.put("rubroE", freq(es, e -> e.rubro));
-      m.put("contratoE", freq(es, e -> e.contrato));
-      m.put("proyeccionE", freq(es, e -> e.proyeccion));
-      m.put("nivelFormacionE", freq(es, e -> e.nivelFormacion));
-      m.put("medioE", fm(es, e -> e.medio));
-      m.put("cargosE", fm(es, e -> e.cargos));
+      Map<String, Dist> d = new LinkedHashMap<>();
+      d.put("tipo", Estadistica.dist(es, e -> e.tipo, false, "tipo"));
+      d.put("tamano", Estadistica.dist(es, e -> e.tamano, false, "tamano"));
+      d.put("rubro", Estadistica.dist(es, e -> e.rubro, false, "rubro"));
+      d.put("contrato", Estadistica.dist(es, e -> e.contrato, false, "contrato"));
+      d.put("proyeccion", Estadistica.dist(es, e -> e.proyeccion, false, "proyeccion"));
+      d.put("nivelFormacion", Estadistica.dist(es, e -> e.nivelFormacion, false, "nivelFormacion"));
+      d.put("medio", Estadistica.dist(es, e -> e.medio, false, "medio"));
+      d.put("cargos", Estadistica.dist(es, e -> e.cargos, true, "cargos"));
+      m.put("distE", d);
 
-      // Resumen de cada una de las 18 afirmaciones (media sin contar "No sabe").
+      // Las 18 afirmaciones (escala 1 a 3). El valor 0 = "No sabe" se cuenta aparte.
       Map<String, Object> le = new LinkedHashMap<>();
       for (String n : AFIRM) {
-        le.put(n, lkE(es, n));
+        le.put(n, Estadistica.lik(es.stream().map(e -> ig(e, n)).collect(Collectors.toList()), 3));
       }
       m.put("likertE", le);
     }
@@ -243,20 +290,20 @@ public class Api {
   }
 
   // =====================================================================
-  // 4. SIMULACIÓN MONTE CARLO
+  // 5. SIMULACIÓN MONTE CARLO
   // =====================================================================
 
   /**
    * Simula cuántos titulados se inscribirían a un programa de posgrado.
    * Cada titulado potencial se inscribe con probabilidad q = probInteres x probInscribe,
    * así que los inscritos siguen una distribución binomial. Se repite el experimento
-   * "iteraciones" veces y se reporta la media, el rango del 90 % (p5 a p95) y la
-   * probabilidad de alcanzar el mínimo de inscritos para abrir el programa.
-   * La semilla fija (42) hace que el resultado sea reproducible.
+   * "iteraciones" veces y se reporta la media, el rango del 90 % (p5 a p95), la probabilidad
+   * de alcanzar el mínimo de inscritos para abrir el programa y la distribución completa
+   * (para dibujarla). La semilla fija (42) hace que el resultado sea reproducible.
    */
   @PostMapping("/simulacion")
   public Map<String, Object> sim(@RequestBody Map<String, Double> p) {
-    int n = Math.max(1, p.getOrDefault("poblacion", 300.0).intValue());
+    int n = Math.min(1_000_000, Math.max(1, p.getOrDefault("poblacion", 300.0).intValue()));
     int it = Math.min(50000, Math.max(100, p.getOrDefault("iteraciones", 5000.0).intValue()));
     int min = p.getOrDefault("minimo", 20.0).intValue();
     double q = Math.min(1, Math.max(0, p.getOrDefault("probInteres", 0.6) * p.getOrDefault("probInscribe", 0.3)));
@@ -270,54 +317,75 @@ public class Api {
     }
 
     DescriptiveStatistics d = new DescriptiveStatistics(x);
-    return Map.of(
-        "media", r(d.getMean()),
-        "p5", r(d.getPercentile(5)),
-        "p95", r(d.getPercentile(95)),
-        "probApertura", r(ok * 1.0 / it));
-  }
 
-  // =====================================================================
-  // 5. EXPORTACIÓN CSV
-  // =====================================================================
-
-  /** Encierra un valor entre comillas y duplica las comillas internas (formato CSV). */
-  static String q(Object o) {
-    return "\"" + String.valueOf(o).replace("\"", "\"\"") + "\"";
-  }
-
-  /**
-   * Convierte una lista de entidades a CSV con una columna por cada campo público (por reflexión).
-   * El carácter ﻿ (BOM) al inicio hace que Excel reconozca las tildes.
-   */
-  static String csv(List<?> l, Class<?> c) {
-    Field[] fs = c.getFields();
-    StringBuilder s = new StringBuilder("﻿" + Arrays.stream(fs).map(Field::getName).collect(Collectors.joining(",")) + "\n");
-    for (Object o : l) {
-      s.append(Arrays.stream(fs).map(f -> {
-        try {
-          Object v = f.get(o);
-          return q(v == null ? "" : v);
-        } catch (Exception e) {
-          return "\"\"";
-        }
-      }).collect(Collectors.joining(","))).append("\n");
+    // Distribución de los inscritos entre el percentil 0,5 y el 99,5 (porcentaje de iteraciones por valor).
+    int lo = (int) Math.floor(d.getPercentile(0.5)), hi = (int) Math.ceil(d.getPercentile(99.5));
+    int[] cuenta = new int[hi - lo + 1];
+    for (double v : x) {
+      int k = (int) v;
+      if (k >= lo && k <= hi) cuenta[k - lo]++;
     }
-    return s.toString();
+    List<double[]> dist = new ArrayList<>();
+    for (int i = 0; i < cuenta.length; i++) {
+      dist.add(new double[] {lo + i, Estadistica.r(cuenta[i] * 100.0 / it)});
+    }
+
+    Map<String, Object> o = new LinkedHashMap<>();
+    o.put("media", Estadistica.r(d.getMean()));
+    o.put("p5", Estadistica.r(d.getPercentile(5)));
+    o.put("p95", Estadistica.r(d.getPercentile(95)));
+    o.put("probApertura", Estadistica.r(ok * 1.0 / it));
+    o.put("probConjunta", Estadistica.r(q));
+    o.put("minimo", min);
+    o.put("dist", dist);
+    return o;
   }
 
+  // =====================================================================
+  // 6. EXPORTACIÓN CSV
+  // =====================================================================
+
+  /** Titulados listos para analizar (categorías unificadas, opciones múltiples en columnas 0/1). */
   @GetMapping(value = "/export/titulados.csv", produces = "text/csv; charset=UTF-8")
-  public String csvT() {
-    return csv(tr.findAll(), Titulado.class);
+  public String csvT(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    return Exportacion.limpio(titulados(datos), Titulado.class, CAT_T, MULTI_T, separador(sep));
   }
 
   @GetMapping(value = "/export/empleadores.csv", produces = "text/csv; charset=UTF-8")
-  public String csvE() {
-    return csv(er.findAll(), Empleador.class);
+  public String csvE(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    return Exportacion.limpio(empleadores(datos), Empleador.class, CAT_E, MULTI_E, separador(sep));
+  }
+
+  /** Copia fiel de lo guardado en la base de datos (trazabilidad). */
+  @GetMapping(value = "/export/titulados_crudo.csv", produces = "text/csv; charset=UTF-8")
+  public String csvTCrudo(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    return Exportacion.crudo(titulados(datos), Titulado.class, separador(sep));
+  }
+
+  @GetMapping(value = "/export/empleadores_crudo.csv", produces = "text/csv; charset=UTF-8")
+  public String csvECrudo(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    return Exportacion.crudo(empleadores(datos), Empleador.class, separador(sep));
+  }
+
+  /** Significado de cada variable y limpieza que recibe. */
+  @GetMapping(value = "/export/diccionario.csv", produces = "text/csv; charset=UTF-8")
+  public String csvDiccionario(@RequestParam(defaultValue = ";") String sep) {
+    return Exportacion.diccionario(separador(sep));
+  }
+
+  /** Matriz de frecuencia cruzada con porcentajes, esperados, residuos y prueba χ². id: ver CRUCES. */
+  @GetMapping(value = "/export/cruce/{id}.csv", produces = "text/csv; charset=UTF-8")
+  public String csvCruce(@PathVariable String id, @RequestParam(defaultValue = "reales") String datos,
+      @RequestParam(defaultValue = ";") String sep) {
+    Def c = CRUCES.stream().filter(x -> x.id().equals(id)).findFirst()
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cruce desconocido: " + id));
+    return Exportacion.cruce(
+        Estadistica.cruce(c.id(), c.titulo(), c.filas(), c.cols(), titulados(datos), c.f(), c.c(), c.ordF(), c.ordC()),
+        separador(sep));
   }
 
   // =====================================================================
-  // 6. DATOS DE DEMOSTRACIÓN (FICTICIOS)
+  // 7. DATOS DE DEMOSTRACIÓN (FICTICIOS)
   // =====================================================================
 
   /** Elige al azar una de las opciones indicadas. */

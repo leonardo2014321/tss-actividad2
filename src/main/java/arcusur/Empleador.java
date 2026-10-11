@@ -15,10 +15,10 @@ public class Empleador {
   @Id @GeneratedValue public Long id;
 
   // ---- P1 a P8: datos de la organización y empleabilidad (listas cerradas) ----
-  @NotBlank public String empresa, tipo, tamano, rubro, contrato, proyeccion, nivelFormacion, medio;
+  @NotBlank @Size(max = 255) public String empresa, tipo, tamano, rubro, contrato, proyeccion, nivelFormacion, medio;
 
   /** P9: cargos de los titulados (selección múltiple; las opciones van separadas por "|"). */
-  @NotBlank @Column(length = 1500) public String cargos;
+  @NotBlank @Size(max = 1500) @Column(length = 1500) public String cargos;
 
   /** P10 a P12: respuestas abiertas (áreas emergentes, herramientas y competencias). */
   @NotBlank @Size(max = 1500) @Column(length = 1500) public String areasEmergentes, herramientas, competencias;
