@@ -233,11 +233,14 @@ final class Exportacion {
     {"ventaja", "Selección múltiple", "5 asignaturas que dieron ventaja competitiva"},
     {"pocoUtiles", "Selección múltiple", "5 asignaturas de poca utilidad"},
     {"redContactos", "Categórica nominal", "¿Le interesa una red de contactos oficial de la Carrera?"},
-    {"email", "Contacto (opcional)", "Correo electrónico. Dato personal: no publicar ni compartir"},
+    {"email", "Contacto (obligatorio)", "Correo electrónico que identifica la respuesta (único por encuesta). Dato personal: no publicar ni compartir"},
+    {"registrado", "Marca de tiempo", "Fecha y hora en que el servidor guardó la respuesta (ISO 8601)"},
     {"telefono", "Contacto (opcional)", "Teléfono. Dato personal: no publicar ni compartir"},
     {"linkedin", "Contacto (opcional)", "Perfil de LinkedIn. Dato personal: no publicar ni compartir"}};
 
   private static final String[][] DIC_E = {
+    {"email", "Contacto (obligatorio)", "Correo electrónico de contacto que identifica la respuesta (único por encuesta). Dato personal: no publicar ni compartir"},
+    {"registrado", "Marca de tiempo", "Fecha y hora en que el servidor guardó la respuesta (ISO 8601)"},
     {"empresa", "Texto libre", "Nombre de la empresa o institución"},
     {"tipo", "Categórica nominal", "Tipo de organización (público o privado)"},
     {"tamano", "Categórica ordinal", "Tamaño de la organización"},

@@ -10,5 +10,7 @@ RUN mvn -q clean package -DskipTests
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/arcusur-encuestas-1.0.jar app.jar
+# Carpeta de la base H2 por defecto: móntala como volumen para no perder datos al recrear el contenedor.
+VOLUME /app/data
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]

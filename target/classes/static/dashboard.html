@@ -12,7 +12,7 @@
 <div id="app"></div>
 <!-- Simulador Monte Carlo: compara el escenario base con el escenario con becas (fuera de #app para conservar los valores escritos) -->
 <section class="panel" id="p-simulacion" hidden><h2 class="ptit">Escenarios de simulación</h2>
-<p class="lead">¿Se abriría el programa? Cada titulado potencial se inscribe con probabilidad igual a <i>interés × inscripción</i>. Se repite el experimento 5 000 veces y se cuenta en cuántas se alcanza el mínimo de inscritos. Los valores iniciales son de ejemplo: reemplácelos con los de su análisis.</p>
+<p class="lead">¿Se abriría el programa? Cada titulado potencial se inscribe con probabilidad igual a <i>interés × inscripción</i>. Se repite el experimento 5 000 veces y se cuenta en cuántas se alcanza el mínimo de inscritos. La probabilidad de interés sale de las respuestas del origen de datos elegido arriba (reales, demostración o ambos) y cada área de posgrado se simula con la participación que tuvo en esas respuestas. Pulse «Simular y guardar» para dejar la corrida registrada junto con ese origen de datos.</p>
 <article class="card metodo"><h3>Método utilizado: simulación Monte Carlo</h3>
 <p class="sub">Se repite muchas veces un experimento aleatorio y se cuenta con qué frecuencia ocurre el resultado buscado.</p>
 <dl class="ficha">
@@ -21,6 +21,7 @@
 <div><dt>Iteraciones</dt><dd>5 000 muestras de X por escenario.</dd></div>
 <div><dt>Generador</dt><dd>Números pseudoaleatorios (<code>JDKRandomGenerator</code>) con semilla fija 42: el resultado es reproducible.</dd></div>
 <div><dt>Probabilidad de abrir</dt><dd>P = (iteraciones con X ≥ mínimo) / 5 000.</dd></div>
+<div><dt>Vínculo con los datos</dt><dd>Interés = proporción de titulados que respondió «SÍ»; cada área recibe su participación entre quienes eligieron un área. Cada corrida guardada conserva el origen de datos y la cantidad de respuestas usadas.</dd></div>
 <div><dt>Escenarios</dt><dd>Base y con becas: la beca suma puntos a la probabilidad de inscripción.</dd></div>
 </dl></article>
 <form class="sim" id="sim"><div class="campos">
@@ -29,8 +30,9 @@
 <label>Probabilidad de inscripción (base)<input id="pr" type="number" step="0.01" min="0" max="1" value="0.3"></label>
 <label>Aumento por becas (puntos)<input id="bono" type="number" step="0.01" min="0" max="1" value="0.1"></label>
 <label>Mínimo de inscritos para abrir<input id="mn" type="number" value="60" min="1"></label></div>
-<div class="row"><button>Simular escenarios</button></div></form>
-<div id="simres" aria-live="polite"></div></section>
+<div class="row"><button>Simular y guardar</button></div></form>
+<div id="simres" aria-live="polite"></div>
+<div id="hist"></div></section>
 </main>
 <script>
 // ============================================================
@@ -230,17 +232,17 @@ if(s.nTitulados&&!piEditado){$("pi").value=Math.max(0.01,s.pctInteres);$("piHint
 async function cargar(inicial){let s;try{const r=await fetch("/api/stats?datos="+fuente);if(!r.ok)throw 0;s=await r.json()}catch{$("app").innerHTML='<div class="vacio-grande"><b>No se pudieron cargar los datos</b>Revise que el servidor esté activo y recargue la página.</div>';return}
 if(inicial&&fuente=="reales"&&!s.nTitulados&&!s.nEmpleadores&&s.disponibles.demo>0){fuente="demo";return cargar(false)}
 ultimo=s;pintar(s);controles(s)}
-document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{fuente=b.dataset.f;cargar(false)});
+document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{fuente=b.dataset.f;cargar(false).then(resim)});
 $("tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-t]");if(b)mostrar(b.dataset.t)});
 document.addEventListener("click",e=>{const x=e.target.closest("[data-exp]");if(x){e.preventDefault();x.closest(".panel").querySelectorAll("details.grupo").forEach(d=>d.open=x.dataset.exp==="1")}});
-$("demo").onclick=async()=>{await fetch("/api/seed",{method:"POST"});fuente="demo";cargar(false)};
-$("borrar").onclick=async()=>{await fetch("/api/reset",{method:"DELETE"});fuente="reales";cargar(false)};
+$("demo").onclick=async()=>{await fetch("/api/seed",{method:"POST"});fuente="demo";cargar(false).then(resim)};
+$("borrar").onclick=async()=>{await fetch("/api/reset",{method:"DELETE"});fuente="reales";cargar(false).then(resim)};
 
 // ============================================================
 // 6. SIMULACIÓN MONTE CARLO
 // ============================================================
 // call(): envía parámetros a /api/simulacion y devuelve el resultado.
-async function call(b){return(await fetch("/api/simulacion",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json()}
+async function call(b){return(await fetch("/api/simulacion?datos="+fuente,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json()}
 // distSvg(): superpone las dos distribuciones de inscritos y marca el mínimo para abrir.
 function distSvg(a,c,min){const W=640,H=230,m={l:44,r:14,t:14,b:34},pts=a.dist.concat(c.dist),x0=Math.min(...pts.map(p=>p[0]),min),x1=Math.max(...pts.map(p=>p[0]),min),y1=Math.max(...pts.map(p=>p[1]),1)*1.1;
 const X=v=>m.l+(v-x0)/Math.max(1,x1-x0)*(W-m.l-m.r),Y=v=>H-m.b-v/y1*(H-m.t-m.b);
@@ -251,14 +253,22 @@ s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="#9aa6b5"/>
 `<line x1="${X(min)}" x2="${X(min)}" y1="${m.t}" y2="${Y(0)}" stroke="#14202e" stroke-dasharray="5 4" stroke-width="2"/><text x="${X(min)+6}" y="${m.t+10}" style="fill:#14202e;font-weight:600">Mínimo para abrir: ${min}</text>`+
 `<text x="${W/2}" y="${H-1}" text-anchor="middle">Inscritos en el programa</text><text transform="translate(12 ${H/2}) rotate(-90)" text-anchor="middle">% de simulaciones</text></svg>`;
 return s+`<div class="leyenda"><span><i style="background:#b45309"></i>Escenario base</span><span><i style="background:#0f766e"></i>Con becas</span></div>`}
-async function simular(){try{await simular2()}catch{$("simres").innerHTML='<p class="aviso">No se pudo calcular la simulación. Revise que el servidor esté activo e inténtelo de nuevo.</p>'}}
-async function simular2(){const b={poblacion:+$("pob").value,probInteres:+$("pi").value,probInscribe:+$("pr").value,minimo:+$("mn").value,iteraciones:5000},bono=+$("bono").value;
-const a=await call(b),c=await call({...b,probInscribe:Math.min(1,b.probInscribe+bono)});
+async function simular(g){try{await simular2(g)}catch{$("simres").innerHTML='<p class="aviso">No se pudo calcular la simulación. Revise que el servidor esté activo e inténtelo de nuevo.</p>'}}
+async function simular2(g){const corrida="c"+Date.now().toString(36),b={poblacion:+$("pob").value,probInteres:+$("pi").value,probInscribe:+$("pr").value,minimo:+$("mn").value,iteraciones:5000,guardar:g?1:0,corrida},bono=+$("bono").value;
+const a=await call({...b,escenario:"base"}),c=await call({...b,escenario:"becas",probInscribe:Math.min(1,b.probInscribe+bono)});
 const card=(t,x,cls)=>`<div class="k ${cls}"><span>${t}</span><b>${num(x.probApertura*100,0)} %</b><em>probabilidad de abrir · ${num(x.media,0)} inscritos en promedio (rango del 90 %: ${num(x.p5,0)} a ${num(x.p95,0)})</em></div>`;
-$("simres").innerHTML=`<div class="esc2">${card("Escenario base",a,"falta")}${card("Con becas",c,"ok")}</div>`+
+const origen=a.origenInteres==="datos"?`Interés tomado de las respuestas (${a.nTitulados} titulados, origen: ${({reales:"datos reales",demo:"demostración",todos:"reales y demostración"})[a.datos]||a.datos}).`:"Interés escrito a mano.";
+const porArea=(!a.porArea||!a.porArea.length)?"":tarjeta("Cada área de posgrado","Participación de cada área entre los titulados interesados y probabilidad de que ese programa alcance el mínimo de inscritos.",`<div class="scroll"><table class="res"><tr><th>Área</th><th>Participación</th><th>Inscritos (base)</th><th>Abre (base)</th><th>Inscritos (becas)</th><th>Abre (becas)</th></tr>${a.porArea.map((x,i)=>{const y=(c.porArea||[])[i]||x;return`<tr><td>${esc(x.area)}</td><td>${num(x.participacion*100,0)} %</td><td>${num(x.media,0)}</td><td>${num(x.probApertura*100,0)} %</td><td>${num(y.media,0)}</td><td>${num(y.probApertura*100,0)} %</td></tr>`}).join("")}</table></div>`,"Un área con poca participación rara vez reúne el mínimo por sí sola: conviene ofrecer pocos programas o módulos comunes.","ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"');
+$("simres").innerHTML=`<p class="sub">${origen}${a.guardada?" Corrida guardada en la base de datos.":""}</p><div class="esc2">${card("Escenario base",a,"falta")}${card("Con becas",c,"ok")}</div>`+
 tarjeta("Distribución de inscritos en 5 000 simulaciones","La parte de cada curva a la derecha de la línea punteada es la probabilidad de abrir.",distSvg(a,c,b.minimo),
-`Con becas, la probabilidad de alcanzar los ${b.minimo} inscritos pasa de ${num(a.probApertura*100,0)} % a ${num(c.probApertura*100,0)} %. Cerca de 100 % significa que el programa abriría casi siempre; cerca de 0 %, casi nunca.`,"ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"')}
-$("sim").onsubmit=e=>{e.preventDefault();simular()};
+`Con becas, la probabilidad de alcanzar los ${b.minimo} inscritos pasa de ${num(a.probApertura*100,0)} % a ${num(c.probApertura*100,0)} %. Cerca de 100 % significa que el programa abriría casi siempre; cerca de 0 %, casi nunca.`,"ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"')+porArea;
+if(g)historial()}
+// resim(): recalcula (sin guardar) y recarga el historial cuando cambia el origen de datos.
+function resim(){simular(false);historial()}
+// historial(): últimas corridas guardadas del origen de datos actual y enlace para descargarlas.
+async function historial(){const h=$("hist");try{const r=await fetch("/api/simulaciones?datos="+fuente);if(!r.ok)throw 0;const l=(await r.json()).filter(x=>!x.area);
+h.innerHTML=l.length?tarjeta("Simulaciones guardadas","Las últimas corridas de este origen de datos (programa en general).",`<div class="scroll"><table class="res"><tr><th>Fecha</th><th>Escenario</th><th>Titulados usados</th><th>Interés</th><th>Inscripción</th><th>Mínimo</th><th>Abre</th></tr>${l.slice(0,10).map(x=>`<tr><td>${esc(String(x.fecha).slice(0,16).replace("T"," "))}</td><td>${esc(x.escenario)}</td><td>${x.nTitulados}</td><td>${num(x.probInteres*100,0)} %</td><td>${num(x.probInscribe*100,0)} %</td><td>${x.minimo}</td><td>${num(x.probApertura*100,0)} %</td></tr>`).join("")}</table></div><p class="nota-t"><a href="/api/export/simulaciones.csv?datos=${fuente}&sep=${encodeURIComponent(sep)}">Descargar todas las simulaciones (CSV)</a></p>`,"","ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"'):""}catch{h.innerHTML=""}}
+$("sim").onsubmit=e=>{e.preventDefault();simular(true)};
 $("pi").addEventListener("input",()=>piEditado=true);
-cargar(true);simular();
+cargar(true).then(resim);
 </script></body></html>

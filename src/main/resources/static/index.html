@@ -100,7 +100,7 @@ F("concordancia","¿Considera que existe concordancia entre la formación profes
 {t:"Asignaturas",c:[F("ventaja","Indique 5 asignaturas cursadas en la Carrera que le brindaron una ventaja competitiva al momento de buscar trabajo o desenvolverse profesionalmente.","m",{max:5,otra:1}),
 F("pocoUtiles","Indique 5 asignaturas cursadas en la Carrera que no le resultaron de mucha utilidad en su vida profesional.","m",{max:5,otra:1})]},
 {t:"Red de contactos",c:[F("redContactos","¿Le interesaría formar parte de una red de contactos oficial de la Carrera de Ingeniería en Sistemas para compartir experiencias, proyectos y ofertas laborales?"),
-F("email","Email de contacto","e",{opt:1}),F("telefono","Número telefónico de contacto (de preferencia con WhatsApp)","p",{opt:1}),F("linkedin","Link de LinkedIn","t",{opt:1})]}],
+F("email","Email de contacto (identifica su respuesta: una por correo)","e"),F("telefono","Número telefónico de contacto (de preferencia con WhatsApp)","p",{opt:1}),F("linkedin","Link de LinkedIn","t",{opt:1})]}],
 // ---- Encuesta de EMPLEADORES ----
 empleadores:[
 {t:"Su organización",c:[F("empresa","Nombre de la empresa o institución","t"),F("tipo","Tipo de organización"),
@@ -112,6 +112,7 @@ F("proyeccion","Considerando las necesidades actuales y proyectadas de la organi
 F("nivelFormacion","¿Qué nivel de formación académica o actualización profesional demanda su organización para contratar nuevos profesionales del área?"),
 F("medio","¿A través de qué medio convoca a profesionales en su organización (empresa o institución)?",0,{o:MEDE}),
 F("cargos","¿Qué tipo de cargos desempeñan los profesionales titulados de la Carrera de Ingeniería de Sistemas en su organización? (Puede seleccionar más de una opción)","m",{o:CARE,otra:"Otros (especifique, opcional)"})]},
+{t:"Contacto",d:"El correo identifica su respuesta: cada correo puede responder esta encuesta una sola vez.",c:[F("email","Correo electrónico de contacto de la organización","e")]},
 {t:"Tendencias y competencias",c:[
 F("areasEmergentes","Desde su experiencia en el sector laboral, ¿qué nuevas áreas de conocimiento, tecnologías o tendencias emergentes considera importantes para la formación del profesional de Ingeniería de Sistemas?","a"),
 F("herramientas","¿Cuáles son las nuevas herramientas tecnológicas (software, plataformas o entornos de desarrollo) que, a su criterio, debería conocer y manejar el profesional titulado de la Carrera de Ingeniería de Sistemas?","a"),
@@ -206,6 +207,8 @@ const o=(D[c.n+"_otro"]||"").trim(),a=(D[c.n+"_otra"]||"").trim();if(o&&String(v
 d[c.n]=NUM.includes(c.n)?+v:v}));
 // Envía la respuesta a la API (POST /api/titulados o /api/empleadores) y muestra la pantalla de agradecimiento.
 $("sig").disabled=true;
-try{const r=await fetch("/api/"+k,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});if(!r.ok)throw 0;f.hidden=true;$("fin").hidden=false}
-catch{err("No se pudo enviar. Revise su conexión e inténtelo de nuevo.")}$("sig").disabled=false};
+try{const r=await fetch("/api/"+k,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});
+// 409 = ese correo ya respondió: el servidor envía el mensaje y se muestra tal cual.
+if(!r.ok){const j=await r.json().catch(()=>({}));throw r.status==409&&j.message?j.message:0}f.hidden=true;$("fin").hidden=false}
+catch(x){err(typeof x=="string"?x:"No se pudo enviar. Revise su conexión e inténtelo de nuevo.")}$("sig").disabled=false};
 </script></body></html>
