@@ -8,11 +8,17 @@ import jakarta.validation.constraints.*;
  * Cada objeto es una fila de la tabla {@code empleador}.
  */
 @Entity
-@Table(name = "empleador")
+@Table(name = "empleador", uniqueConstraints = @UniqueConstraint(name = "uk_empleador_email", columnNames = "email"))
 public class Empleador {
 
   /** Identificador autogenerado. */
   @Id @GeneratedValue public Long id;
+
+  /** Correo de contacto que identifica la respuesta: obligatorio y único. Se guarda en minúsculas. */
+  @NotBlank @Email @Size(max = 255) public String email;
+
+  /** Fecha y hora de registro (ISO 8601). La asigna el servidor al guardar. */
+  @Size(max = 40) public String registrado;
 
   // ---- P1 a P8: datos de la organización y empleabilidad (listas cerradas) ----
   @NotBlank @Size(max = 255) public String empresa, tipo, tamano, rubro, contrato, proyeccion, nivelFormacion, medio;
@@ -35,4 +41,10 @@ public class Empleador {
 
   /** true si el registro es de demostración (ficticio); permite borrarlo sin tocar datos reales. */
   public boolean demo;
+
+  /** Marca la hora de registro en el servidor, sin importar lo que envíe el cliente. */
+  @PrePersist
+  void alGuardar() {
+    registrado = java.time.OffsetDateTime.now().toString();
+  }
 }

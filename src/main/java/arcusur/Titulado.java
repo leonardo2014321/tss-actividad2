@@ -11,11 +11,17 @@ import jakarta.validation.constraints.*;
  * por ejemplo, "nivelPosgrado" solo se llena si "formacion" es SI.
  */
 @Entity
-@Table(name = "titulado")
+@Table(name = "titulado", uniqueConstraints = @UniqueConstraint(name = "uk_titulado_email", columnNames = "email"))
 public class Titulado {
 
   /** Identificador autogenerado. */
   @Id @GeneratedValue public Long id;
+
+  /** Correo que identifica la respuesta: obligatorio y único (cada persona responde una sola vez). Se guarda en minúsculas. */
+  @NotBlank @Email @Size(max = 255) public String email;
+
+  /** Fecha y hora de registro (ISO 8601). La asigna el servidor al guardar. */
+  @Size(max = 40) public String registrado;
 
   // ---- Campos obligatorios en todas las rutas ----
   @NotBlank @Size(max = 255) public String edad, genero, formacion, interes, situacion, tiempoPrimerTrabajo, numEmpleos, redContactos;
@@ -36,12 +42,18 @@ public class Titulado {
   @Size(max = 255) public String area, orgPosgrado;
   /** Datos del trabajo actual (solo si trabaja en una organización). */
   @Size(max = 255) public String empresa, rubro, sector, departamento, areaOrg, cargo, antiguedad, medio, remuneracion, primerEmpleo;
-  /** Datos de contacto opcionales. */
-  @Size(max = 255) public String email, telefono, linkedin;
+  /** Datos de contacto opcionales (el correo es obligatorio y está arriba). */
+  @Size(max = 255) public String telefono, linkedin;
 
   /** Preguntas de elección múltiple: las opciones elegidas van separadas por "|". */
   @Size(max = 1500) @Column(length = 1500) public String utiles, mejorar, ventaja, pocoUtiles;
 
   /** true si el registro es de demostración (ficticio); permite borrarlo sin tocar datos reales. */
   public boolean demo;
+
+  /** Marca la hora de registro en el servidor, sin importar lo que envíe el cliente. */
+  @PrePersist
+  void alGuardar() {
+    registrado = java.time.OffsetDateTime.now().toString();
+  }
 }

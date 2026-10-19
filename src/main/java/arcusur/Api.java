@@ -9,6 +9,7 @@ import java.util.stream.*;
 import org.apache.commons.math3.distribution.BinomialDistribution;
 import org.apache.commons.math3.random.JDKRandomGenerator;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,11 +31,13 @@ public class Api {
 
   private final TituladoRepo tr;
   private final EmpleadorRepo er;
+  private final SimulacionRepo sr;
 
   /** Spring inyecta los repositorios automáticamente. */
-  public Api(TituladoRepo tr, EmpleadorRepo er) {
+  public Api(TituladoRepo tr, EmpleadorRepo er, SimulacionRepo sr) {
     this.tr = tr;
     this.er = er;
+    this.sr = sr;
   }
 
   // =====================================================================
@@ -46,7 +49,14 @@ public class Api {
   public Titulado guardarT(@Valid @RequestBody Titulado t) {
     t.id = null;      // evita que el cliente sobrescriba un registro existente
     t.demo = false;   // una respuesta enviada por formulario nunca es de demostración
-    return tr.save(t);
+    t.email = t.email.trim().toLowerCase(Locale.ROOT);
+    String repetido = "Este correo ya respondió la encuesta de titulados.";
+    if (tr.existsByEmailIgnoreCase(t.email)) throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    try {
+      return tr.save(t);
+    } catch (DataIntegrityViolationException x) { // dos envíos simultáneos con el mismo correo
+      throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    }
   }
 
   /** Guarda la respuesta de un empleador. Mismas reglas que en titulados. */
@@ -54,7 +64,14 @@ public class Api {
   public Empleador guardarE(@Valid @RequestBody Empleador e) {
     e.id = null;
     e.demo = false;
-    return er.save(e);
+    e.email = e.email.trim().toLowerCase(Locale.ROOT);
+    String repetido = "Este correo ya respondió la encuesta de empleadores.";
+    if (er.existsByEmailIgnoreCase(e.email)) throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    try {
+      return er.save(e);
+    } catch (DataIntegrityViolationException x) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    }
   }
 
   // =====================================================================
@@ -124,14 +141,14 @@ public class Api {
   // 3. CALIDAD DE LOS DATOS Y MUESTRA
   // =====================================================================
 
-  /** Registros que coinciden en todas las respuestas (posibles envíos repetidos). */
+  /** Registros que coinciden en todas las respuestas, sin contar el correo ni la hora (posibles envíos repetidos con otro correo). */
   private static long duplicados(List<?> l) {
     Set<String> vistos = new HashSet<>();
     long dup = 0;
     for (Object o : l) {
       StringBuilder firma = new StringBuilder();
       for (java.lang.reflect.Field f : o.getClass().getFields()) {
-        if (f.getName().equals("id") || f.getName().equals("demo")) continue;
+        if (List.of("id", "demo", "email", "registrado").contains(f.getName())) continue; // identifican a la persona, no son respuestas
         Object v = Exportacion.valor(o, f);
         firma.append(v instanceof String str ? Estadistica.clave(str) : v).append('¦'); // ignora mayúsculas y tildes
       }
@@ -293,20 +310,38 @@ public class Api {
   // =====================================================================
 
   /**
-   * Simula cuántos titulados se inscribirían a un programa de posgrado.
-   * Cada titulado potencial se inscribe con probabilidad q = probInteres x probInscribe,
-   * así que los inscritos siguen una distribución binomial. Se repite el experimento
-   * "iteraciones" veces y se reporta la media, el rango del 90 % (p5 a p95), la probabilidad
-   * de alcanzar el mínimo de inscritos para abrir el programa y la distribución completa
-   * (para dibujarla). La semilla fija (42) hace que el resultado sea reproducible.
+   * Simula cuántos titulados se inscribirían a un programa de posgrado, a partir de las respuestas de la encuesta.
+   *
+   * Cada titulado potencial se inscribe con probabilidad q = probInteres x probInscribe, así que los inscritos
+   * siguen una distribución binomial. Se repite el experimento "iteraciones" veces y se reporta la media, el rango
+   * del 90 % (p5 a p95), la probabilidad de alcanzar el mínimo de inscritos y la distribución completa.
+   * La semilla fija (42) hace que el resultado sea reproducible.
+   *
+   * Asociación con los datos: la probabilidad de interés sale de las respuestas del conjunto elegido en {@code datos}
+   * (reales, demo o todos) cuando el cuerpo no la trae, y además se simula cada área de posgrado con la participación
+   * que tuvo entre los interesados. Si el cuerpo trae {@code "guardar": 1}, las corridas quedan guardadas en la base de
+   * datos junto con el conjunto de datos que las originó (consultables en GET /api/simulaciones).
+   *
+   * Cuerpo (todos opcionales): poblacion, probInteres, probInscribe, minimo, iteraciones, guardar,
+   * escenario ("base", "becas"...) y corrida (texto que agrupa los escenarios que se comparan).
    */
   @PostMapping("/simulacion")
-  public Map<String, Object> sim(@RequestBody Map<String, Double> p) {
-    int n = Math.min(1_000_000, Math.max(1, p.getOrDefault("poblacion", 300.0).intValue()));
-    int it = Math.min(50000, Math.max(100, p.getOrDefault("iteraciones", 5000.0).intValue()));
-    int min = p.getOrDefault("minimo", 20.0).intValue();
-    double q = Math.min(1, Math.max(0, p.getOrDefault("probInteres", 0.6) * p.getOrDefault("probInscribe", 0.3)));
+  public Map<String, Object> sim(@RequestParam(defaultValue = "reales") String datos, @RequestBody Map<String, Object> p) {
+    return simular(datos, p);
+  }
 
+  /** Lee un número del cuerpo de la solicitud; si falta o no es número, devuelve el valor por defecto. */
+  private static double num(Map<String, Object> p, String k, double por) {
+    return p.get(k) instanceof Number x ? x.doubleValue() : por;
+  }
+
+  /** Lee un texto del cuerpo de la solicitud, recortado a n caracteres. */
+  private static String txt(Map<String, Object> p, String k, String por, int n) {
+    return p.get(k) instanceof String s && !s.isBlank() ? s.trim().substring(0, Math.min(n, s.trim().length())) : por;
+  }
+
+  /** Una corrida Monte Carlo: n titulados potenciales, probabilidad conjunta q, "it" repeticiones y "min" inscritos para abrir. */
+  private static Map<String, Object> correr(int n, double q, int it, int min, boolean conDistribucion) {
     BinomialDistribution b = new BinomialDistribution(new JDKRandomGenerator(42), n, q);
     double[] x = new double[it];
     int ok = 0; // iteraciones en las que se alcanzó el mínimo
@@ -314,21 +349,7 @@ public class Api {
       x[i] = b.sample();
       if (x[i] >= min) ok++;
     }
-
     DescriptiveStatistics d = new DescriptiveStatistics(x);
-
-    // Distribución de los inscritos entre el percentil 0,5 y el 99,5 (porcentaje de iteraciones por valor).
-    int lo = (int) Math.floor(d.getPercentile(0.5)), hi = (int) Math.ceil(d.getPercentile(99.5));
-    int[] cuenta = new int[hi - lo + 1];
-    for (double v : x) {
-      int k = (int) v;
-      if (k >= lo && k <= hi) cuenta[k - lo]++;
-    }
-    List<double[]> dist = new ArrayList<>();
-    for (int i = 0; i < cuenta.length; i++) {
-      dist.add(new double[] {lo + i, Estadistica.r(cuenta[i] * 100.0 / it)});
-    }
-
     Map<String, Object> o = new LinkedHashMap<>();
     o.put("media", Estadistica.r(d.getMean()));
     o.put("p5", Estadistica.r(d.getPercentile(5)));
@@ -336,8 +357,108 @@ public class Api {
     o.put("probApertura", Estadistica.r(ok * 1.0 / it));
     o.put("probConjunta", Estadistica.r(q));
     o.put("minimo", min);
-    o.put("dist", dist);
+    if (conDistribucion) {
+      // Distribución de los inscritos entre el percentil 0,5 y el 99,5 (porcentaje de iteraciones por valor).
+      int lo = (int) Math.floor(d.getPercentile(0.5)), hi = (int) Math.ceil(d.getPercentile(99.5));
+      int[] cuenta = new int[hi - lo + 1];
+      for (double v : x) {
+        int k = (int) v;
+        if (k >= lo && k <= hi) cuenta[k - lo]++;
+      }
+      List<double[]> dist = new ArrayList<>();
+      for (int i = 0; i < cuenta.length; i++) {
+        dist.add(new double[] {lo + i, Estadistica.r(cuenta[i] * 100.0 / it)});
+      }
+      o.put("dist", dist);
+    }
     return o;
+  }
+
+  /** Guarda una corrida en la base de datos. area vacía = programa en general. */
+  private void guardarSim(Map<String, Object> r, String area, String corrida, String escenario, String datos, int n,
+      double pInteres, double pInscribe, int it, int nT, String origen) {
+    Simulacion s = new Simulacion();
+    s.fecha = java.time.OffsetDateTime.now().toString();
+    s.corrida = corrida;
+    s.escenario = escenario;
+    s.datos = datos;
+    s.area = area;
+    s.poblacion = n;
+    s.minimo = (Integer) r.get("minimo");
+    s.iteraciones = it;
+    s.probInteres = pInteres;
+    s.probInscribe = pInscribe;
+    s.probConjunta = (Double) r.get("probConjunta");
+    s.nTitulados = nT;
+    s.origenInteres = origen;
+    s.media = (Double) r.get("media");
+    s.p5 = (Double) r.get("p5");
+    s.p95 = (Double) r.get("p95");
+    s.probApertura = (Double) r.get("probApertura");
+    s.demo = !"reales".equals(datos); // «demo» y «todos» incluyen datos ficticios
+    sr.save(s);
+  }
+
+  /** Cálculo de la simulación (ver {@link #sim}); lo usan el panel y la carga de la demostración. */
+  private Map<String, Object> simular(String datos, Map<String, Object> p) {
+    if (!List.of("reales", "demo", "todos").contains(datos)) datos = "reales";
+    List<Titulado> ts = titulados(datos);
+
+    // Probabilidad de interés observada en las respuestas (si hay); es el valor por defecto de la simulación.
+    Double deLaEncuesta = ts.isEmpty() ? null
+        : ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / ts.size();
+    double pInteres = Math.min(1, Math.max(0, num(p, "probInteres", deLaEncuesta != null ? deLaEncuesta : 0.6)));
+    String origen = deLaEncuesta != null && Math.abs(pInteres - deLaEncuesta) < 0.005 ? "datos" : "manual";
+
+    int n = Math.min(1_000_000, Math.max(1, (int) num(p, "poblacion", 300)));
+    int it = Math.min(50000, Math.max(100, (int) num(p, "iteraciones", 5000)));
+    int min = (int) num(p, "minimo", 20);
+    double pInscribe = Math.min(1, Math.max(0, num(p, "probInscribe", 0.3)));
+    double q = pInteres * pInscribe;
+    boolean guardar = num(p, "guardar", 0) != 0;
+    String escenario = txt(p, "escenario", "base", 30);
+    String corrida = txt(p, "corrida", UUID.randomUUID().toString(), 40);
+
+    Map<String, Object> o = correr(n, q, it, min, true);
+    o.put("datos", datos);
+    o.put("nTitulados", ts.size());
+    o.put("origenInteres", origen);
+    o.put("probInteresUsada", Estadistica.r(pInteres));
+    if (guardar) guardarSim(o, null, corrida, escenario, datos, n, pInteres, pInscribe, it, ts.size(), origen);
+
+    // Por área: cada área recibe la participación que tuvo entre quienes eligieron una (q_area = q x participación).
+    Map<String, Long> porArea = new LinkedHashMap<>();
+    for (String a : Opciones.TITULADOS.get("area")) porArea.put(Estadistica.etiqueta(a), 0L);
+    long conArea = 0;
+    for (Titulado t : ts) {
+      if (t.area == null || t.area.isBlank()) continue;
+      porArea.merge(Estadistica.etiqueta(t.area), 1L, Long::sum);
+      conArea++;
+    }
+    List<Map<String, Object>> areas = new ArrayList<>();
+    if (conArea > 0) {
+      for (Map.Entry<String, Long> e : porArea.entrySet()) {
+        double parte = e.getValue() * 1.0 / conArea;
+        Map<String, Object> ra = correr(n, q * parte, it, min, false);
+        Map<String, Object> fila = new LinkedHashMap<>();
+        fila.put("area", e.getKey());
+        fila.put("participacion", Estadistica.r(parte));
+        fila.putAll(ra);
+        areas.add(fila);
+        if (guardar) guardarSim(ra, e.getKey(), corrida, escenario, datos, n, pInteres, pInscribe, it, ts.size(), origen);
+      }
+    }
+    o.put("porArea", areas);
+    o.put("corrida", corrida);
+    o.put("guardada", guardar);
+    return o;
+  }
+
+  /** Historial de simulaciones guardadas, de la más reciente a la más antigua (máximo 200 filas). */
+  @GetMapping("/simulaciones")
+  public List<Simulacion> historial(@RequestParam(defaultValue = "reales") String datos) {
+    return sr.findAll().stream().filter(s -> acepta(datos, s.demo))
+        .sorted(Comparator.comparing((Simulacion s) -> s.fecha).reversed()).limit(200).collect(Collectors.toList());
   }
 
   // =====================================================================
@@ -353,6 +474,14 @@ public class Api {
   @GetMapping(value = "/export/empleadores.csv", produces = "text/csv; charset=UTF-8")
   public String csvE(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
     return Exportacion.limpio(empleadores(datos), Empleador.class, CAT_E, MULTI_E, separador(sep));
+  }
+
+  /** Corridas de la simulación Monte Carlo guardadas, con el conjunto de datos que las originó. */
+  @GetMapping(value = "/export/simulaciones.csv", produces = "text/csv; charset=UTF-8")
+  public String csvSimulaciones(@RequestParam(defaultValue = "reales") String datos, @RequestParam(defaultValue = ";") String sep) {
+    List<Simulacion> l = sr.findAll().stream().filter(s -> acepta(datos, s.demo))
+        .sorted(Comparator.comparing((Simulacion s) -> s.fecha)).collect(Collectors.toList());
+    return Exportacion.crudo(l, Simulacion.class, separador(sep));
   }
 
   /** Copia fiel de lo guardado en la base de datos (trazabilidad). */
@@ -509,6 +638,7 @@ public class Api {
     for (int i = 0; i < DEMO_TITULADOS; i++) {
       Titulado t = new Titulado();
       t.demo = true;
+      t.email = String.format("titulado%03d@demo.arcusur.test", i + 1);
 
       // Perfil: años de vida profesional (la mayoría son juniors) y edad coherente con ellos.
       int a = (int) Math.min(22, Math.round(-Math.log(1 - r.nextDouble()) * 5.5));
@@ -594,9 +724,11 @@ public class Api {
     String[] emergentes = {"Nube, IA, DevOps", "Ciberseguridad, datos", "Automatización, IoT", "Analítica de datos, IA", "Desarrollo móvil, nube"};
     String[] herramientas = {"Git, Docker, plataformas cloud", "SQL, Power BI, Python", "Java, Spring, PostgreSQL", "Redes, Linux, virtualización"};
     String[] competencias = {"Comunicación, trabajo en equipo, aprendizaje continuo", "Resolución de problemas, ética, responsabilidad", "Liderazgo, adaptación al cambio, inglés técnico"};
+    int nEmp = 0;
     for (Org org : ORGS) {
       Empleador e = new Empleador();
       e.demo = true;
+      e.email = String.format("contacto%02d@demo.arcusur.test", ++nEmp);
       e.empresa = org.nombre();
       e.tipo = E.get("tipo")[org.publica() ? 0 : 1];
       e.tamano = E.get("tamano")[org.tamano()];
@@ -624,6 +756,12 @@ public class Api {
       }
       er.save(e);
     }
+
+    // ---- Simulación Monte Carlo asociada a esta demostración ----
+    // Se calcula con la probabilidad de interés de los titulados ficticios recién creados y queda guardada como «demo».
+    String corrida = "demo-inicial";
+    simular("demo", Map.of("escenario", "base", "corrida", corrida, "poblacion", 300, "probInscribe", 0.3, "minimo", 60, "guardar", 1));
+    simular("demo", Map.of("escenario", "becas", "corrida", corrida, "poblacion", 300, "probInscribe", 0.4, "minimo", 60, "guardar", 1));
     return "OK";
   }
 
@@ -632,6 +770,7 @@ public class Api {
   public String reset() {
     tr.deleteAll(tr.findAll().stream().filter(t -> t.demo).toList());
     er.deleteAll(er.findAll().stream().filter(e -> e.demo).toList());
+    sr.deleteAll(sr.findAll().stream().filter(s -> s.demo).toList()); // las simulaciones de la demostración se van con ella
     return "OK";
   }
 }

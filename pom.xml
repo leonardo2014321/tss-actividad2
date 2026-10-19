@@ -7,12 +7,13 @@
   <groupId>bo.umss</groupId><artifactId>arcusur-encuestas</artifactId><version>1.0</version>
   <!-- Java 17 y codificación UTF-8 (tildes) -->
   <properties><java.version>17</java.version><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
-  <!-- Librerías: web (API REST), JPA (base de datos), validación, H2 (base de datos en archivo) y commons-math3 (estadística y simulación) -->
+  <!-- Librerías: web (API REST), JPA (base de datos), validación, H2 (base de datos en archivo), PostgreSQL (base de datos de servidor) y commons-math3 (estadística y simulación) -->
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-validation</artifactId></dependency>
     <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>runtime</scope></dependency>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
     <dependency><groupId>org.apache.commons</groupId><artifactId>commons-math3</artifactId><version>3.6.1</version></dependency>
   </dependencies>
   <!-- Plugin para ejecutar con "mvn spring-boot:run" y generar el .jar -->

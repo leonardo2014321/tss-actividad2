@@ -1,10 +1,12 @@
 arcusur\Estadistica.class
+arcusur\SimulacionRepo.class
 arcusur\Estadistica$Desc.class
 arcusur\EmpleadorRepo.class
 arcusur\Empleador.class
 arcusur\Api$Def.class
 arcusur\Exportacion.class
 arcusur\Opciones.class
+arcusur\Simulacion.class
 arcusur\Estadistica$Fila.class
 arcusur\Estadistica$Unif.class
 arcusur\Api$Org.class
