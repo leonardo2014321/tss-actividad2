@@ -236,6 +236,30 @@ public class Api {
         .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count()
         + es.stream().flatMap(e -> Arrays.stream(CAT_E).map(c -> (String) Exportacion.valor(e, c)))
         .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count());
+    // Verificaciones de validez (el informe de calidad las exige): deben dar 0 si el formulario y el servidor hicieron su trabajo.
+    String[] obligT = {"edad", "genero", "formacion", "interes", "situacion", "tiempoPrimerTrabajo", "numEmpleos", "redContactos"};
+    String[] obligE = {"empresa", "tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion", "medio", "cargos",
+        "areasEmergentes", "herramientas", "competencias"};
+    long vaciosT = ts.stream().mapToLong(t -> Arrays.stream(obligT).filter(c -> {
+      Object v = Exportacion.valor(t, c);
+      return v == null || v.toString().isBlank();
+    }).count()).sum();
+    long vaciosE = es.stream().mapToLong(e -> Arrays.stream(obligE).filter(c -> {
+      Object v = Exportacion.valor(e, c);
+      return v == null || v.toString().isBlank();
+    }).count()).sum();
+    long celdas = (long) ts.size() * obligT.length + (long) es.size() * obligE.length;
+    long fuera = ts.stream().filter(t -> t.aniosProfesionales < 0 || t.aniosProfesionales > 60 || t.aniosDesempleado < 0 || t.aniosDesempleado > 60
+        || t.opinionPosgrado < 1 || t.opinionPosgrado > 4 || t.satisfaccion < 1 || t.satisfaccion > 4 || t.concordancia < 1 || t.concordancia > 4
+        || (t.pertinencia != null && (t.pertinencia < 1 || t.pertinencia > 4))).count()
+        + es.stream().filter(e -> Arrays.stream(AFIRM).anyMatch(n -> {
+          Integer x = ig(e, n);
+          return x == null || x < 0 || x > 3;
+        })).count();
+    q.put("camposObligatoriosVacios", vaciosT + vaciosE);
+    q.put("completitud", celdas == 0 ? 100.0 : Estadistica.r1(100.0 * (celdas - vaciosT - vaciosE) / celdas));
+    q.put("fueraDeRango", fuera);
+    q.put("aniosNegativos", ts.stream().filter(t -> t.aniosProfesionales < 0 || t.aniosDesempleado < 0).count());
     m.put("calidad", q);
 
     // ---- Titulados ----

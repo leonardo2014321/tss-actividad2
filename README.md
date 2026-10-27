@@ -38,7 +38,7 @@ Las tablas se crean solas la primera vez y se actualizan sin borrar datos. Haz c
 
 ## 3. Cómo probarlo (2 minutos)
 1. Entra al **Panel** y pulsa **Cargar datos de demostración** (150 titulados y 24 empleadores ficticios, con respuestas relacionadas entre sí y un correo ficticio cada uno; si lo pulsas de nuevo se reemplazan, no se duplican). También deja guardada una simulación Monte Carlo calculada con esos datos.
-2. Recorre las pestañas: **Resumen** (hallazgos principales), **Titulados**, **Empleadores**, **Pruebas estadísticas** (uniformidad y relaciones entre variables con χ²), **Simulación** y **Datos** (muestra, limpieza y descargas). Cada gráfico trae su lectura en palabras. Si aún no hay respuestas reales, el panel abre la demostración solo.
+2. Recorre las pestañas en este orden: **Resumen** (resultados clave y *decisiones sugeridas*), **Titulados** y **Empleadores** (detalle), **Pruebas estadísticas** (uniformidad y relaciones entre variables con χ²), **Simulación** y **Muestra y calidad** (requisitos, validación de datos, fórmulas y descargas). Cada gráfico trae su «Para qué sirve» y su lectura en palabras. Si aún no hay respuestas reales, el panel abre la demostración solo.
 3. Pulsa **Borrar datos de demostración**: se borran los titulados, los empleadores **y las simulaciones** que salieron de ellos. Los datos ficticios **no deben usarse como datos de campo**.
 4. Llena una encuesta real en la página principal (el correo es obligatorio y cada correo responde una sola vez por encuesta; si se repite, el formulario lo avisa) y mira cómo aparece en el panel. Exporta con los enlaces de descarga (ver sección 4).
 
@@ -48,11 +48,27 @@ Las tablas se crean solas la primera vez y se actualizan sin borrar datos. Haz c
 | Muestra | Tamaño de la muestra, margen de error referencial y empresas individualizadas (públicas y privadas) |
 | Recolección | Formulario web con listas cerradas, rutas condicionales y validación en el servidor |
 | Limpieza de datos | Unifica mayúsculas, tildes y espacios; agrupa «Otro: …»; convierte las opciones múltiples en columnas 0/1; reporta duplicados, incoherencias y atípicos (regla de Tukey) |
-| Estadística univariada | Frecuencias absolutas y relativas, media, mediana, desviación, cuartiles y porcentajes por nivel en las escalas Likert |
+| Estadística univariada | Frecuencias absolutas y relativas; en los años de vida profesional: n, media, mediana, moda, rango, varianza, desviación, coeficiente de variación, cuartiles, P90, asimetría y atípicos (Tukey); porcentajes por nivel y % de acuerdo en las escalas Likert |
 | Uniformidad | Prueba χ² de bondad de ajuste en cada pregunta de opción única: FE = n/k, χ², valor crítico (α = 5 %) y conclusión «Uniformidad» o «No uniformidad». Cuenta todas las opciones de la pregunta, también las que nadie eligió |
 | Estadística bivariada (independencia) | 5 cruces con χ², grados de libertad, p, V de Cramér, frecuencias esperadas y residuos; avisa si el χ² no es confiable (más del 20 % de celdas con esperada menor a 5) |
-| Visualización | Barras, histograma, barras Likert apiladas, radar, mapa de calor y curvas de simulación; el panel se puede imprimir |
+| Visualización | Barras, histograma, **diagrama de caja**, **ojiva** y tabla de frecuencias (con marca de clase y acumuladas), barras Likert apiladas, **radar** titulados vs. empleadores, mapa de calor y curvas de simulación. Se quitó el radar de una sola serie porque repetía las barras Likert. El panel se puede imprimir |
+| Decisiones | Tabla «Decisiones sugeridas» en el Resumen: cada fila muestra evidencia, regla con umbral y acción (ver sección 4.1) |
+| Calidad | Pestaña «Muestra y calidad»: requisitos de la guía (≥ 3 empresas, pública y privada), validación de datos (duplicados, vacíos, rangos, negativos, incoherencias, atípicos), fórmulas y su equivalente en Excel |
 | Simulación | Monte Carlo: probabilidad de abrir un programa, escenario base vs. con becas. La probabilidad de interés se toma de las respuestas del origen de datos elegido (reales, demostración o ambos) y cada área de posgrado se simula con la participación que tuvo en esas respuestas. Cada corrida se guarda en la base con su origen de datos |
+
+### 4.1 Reglas de decisión (umbrales)
+Están en la constante `UMB` al inicio del script de `dashboard.html`; si el equipo los cambia, todo el panel se ajusta.
+| Decisión | Regla | Fuente |
+|---|---|---|
+| Hay demanda de posgrado | ≥ 50 % de titulados interesados | criterio del equipo |
+| Concentrar la oferta en dos áreas | las dos primeras suman > 70 % | guía, historia de usuario 2 |
+| Dependencia de recursos propios | ≥ 50 % → becas y convenios con la banca | guía, historia de usuario 3 |
+| Brecha de formación | < 60 % de acuerdo (atención 60–79 %, fortaleza ≥ 80 %) | criterio del equipo |
+| Inserción laboral aceptable | ≥ 70 % trabaja o emprende | criterio del equipo |
+| Primer empleo lento | ≥ 40 % tardó más de 4 meses | criterio del equipo |
+| Demanda del mercado alta | ≥ 60 % de organizaciones prevé contratar | criterio del equipo |
+| Resultados estables | ≥ 30 titulados y margen ≤ 10 puntos | criterio del equipo |
+Con datos de demostración las decisiones no valen: son solo para probar el panel.
 
 ### Descargas (panel o URL)
 | Archivo | Contenido |
@@ -74,8 +90,12 @@ src/main/java/arcusur/          Titulado, Empleador, Simulacion (entidades), rep
                                 Api (rutas REST y simulación), Estadistica (limpieza, frecuencias, χ²), Exportacion (CSV),
                                 Opciones (opciones de cada pregunta, tomadas de index.html)
 src/main/resources/static/      index.html (encuestas), dashboard.html (panel), app.css y encuesta.css
+src/test/java/arcusur/          EstadisticaTest: 11 pruebas de validación de los cálculos (mvn test)
 src/main/resources/application.properties   configuración (puerto, base de datos)
 ```
+
+## 5.1 Pruebas de validación
+`mvn test` ejecuta 11 pruebas JUnit sobre `Estadistica`. Los valores esperados NO salen del programa: se calcularon aparte con Python (numpy/scipy) y se pueden repetir en Excel o Google Sheets (PROMEDIO, MEDIANA, MODA, VAR.S, DESVEST.M, CUARTIL.INC, PERCENTIL.INC, COEF.ASIMETRIA). Cubren media, mediana, moda, rango, varianza, desviación, CV, cuartiles, P90, asimetría, atípicos, casos límite, χ² de uniformidad, χ² de independencia con p y V de Cramér, la advertencia de χ² no confiable y los Likert con «No sabe». Los cuartiles usan el método R-7 (el de Excel); otros programas usan otros métodos y pueden dar valores algo distintos.
 
 ## 6. Problemas comunes
 - **`release version 17 not supported`**: tu JDK es anterior a 17. Instala JDK 17+ y revisa `JAVA_HOME`.
@@ -90,7 +110,9 @@ src/main/resources/application.properties   configuración (puerto, base de dato
 - Las preguntas de la encuesta se definen en `index.html`; si las modificas, ajusta también `Titulado.java`, `Empleador.java` y `Api.java`.
 - El correo identifica cada respuesta, pero no se verifica (no se envía un mensaje de confirmación): alguien podría escribir un correo ajeno.
 - Una persona con un correo ya registrado no puede corregir su respuesta desde el formulario; hay que editarla en la base de datos.
-- Escalas Likert: 4 niveles en titulados y 3 niveles más «No sabe» en empleadores.
+- Escalas Likert: 4 niveles en titulados y 3 niveles más «No sabe» en empleadores (la guía sugiere 1 a 5; por eso titulados y empleadores se comparan como % de acuerdo y no como medias). Si el docente exige 5 niveles, hay que cambiar `index.html`, `Titulado.java` y las constantes `NIV4/COL4` del panel.
+- Los años de vida profesional reemplazan al «año de egreso» de la guía; sirven para las mismas medidas (media, mediana, desviación) y para separar junior y consolidados.
+- El formulario no incluye aún un texto de consentimiento informado: agréguelo en `index.html` antes de recoger datos reales.
 - Si cambias las opciones de una pregunta en `index.html`, actualiza también `Opciones.java` (la prueba de uniformidad usa ese número de categorías).
 - Con pocas respuestas el χ² casi nunca es confiable (el panel lo advierte). Reúne más respuestas o agrupa categorías antes de concluir.
 - El margen de error del panel supone muestra aleatoria; si la muestra fue por conveniencia, es solo referencial.
