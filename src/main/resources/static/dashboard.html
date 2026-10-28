@@ -1,408 +1,86 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Panel de análisis · Titulados y empleadores</title><link rel="stylesheet" href="app.css"></head><body>
-<header><h1>Panel de análisis · Titulados y empleadores</h1><a href="index.html">Encuestas</a><a href="dashboard.html">Panel de análisis</a></header>
-<!-- Pestañas: se arman según los datos disponibles -->
-<nav class="tabs" id="tabs" role="tablist" aria-label="Secciones del panel"></nav>
-<main>
-<div class="controls">
-<div class="seg-ctl" role="group" aria-label="Datos a analizar"><button type="button" data-f="reales" aria-pressed="true">Datos reales</button><button type="button" data-f="demo" aria-pressed="false">Demostración</button><button type="button" data-f="todos" aria-pressed="false">Todos</button></div>
-<button type="button" id="demo">Cargar datos de demostración</button><button type="button" class="sec-b" id="borrar">Borrar datos de demostración</button>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ARCUSUR · Evaluación de la Carrera de Ingeniería de Sistemas</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca">
+      <strong>ARCUSUR</strong>
+      <span>Ingeniería de Sistemas · UMSS<br>Plan de Desarrollo Estratégico</span>
+    </div>
+    <nav class="menu" id="menu" aria-label="Secciones del panel"></nav>
+    <div class="origen">
+      <label for="origen">Origen de los datos</label>
+      <select id="origen">
+        <option value="reales">Datos reales</option>
+        <option value="demo">Demostración</option>
+        <option value="todos">Reales y demostración</option>
+      </select>
+      <a href="index.html">Ir a las encuestas</a>
+    </div>
+  </aside>
+
+  <main class="contenido">
+    <header class="cabecera">
+      <h1 id="titulo">Resumen ejecutivo</h1>
+      <p id="detalle"></p>
+    </header>
+    <p class="aviso" id="aviso" role="status" hidden></p>
+
+    <!-- Las vistas de datos se generan en js/panel/vistas.js -->
+    <div id="app"></div>
+
+    <!-- Simulación: vive en el HTML para conservar los parámetros al cambiar de vista -->
+    <section class="vista" id="v-simulacion" hidden>
+      <div class="sim-layout">
+        <section class="bloque">
+          <header><h3>Parámetros</h3></header>
+          <div class="cuerpo">
+            <form class="sim" id="sim">
+              <label>Titulados potenciales<input id="pob" type="number" value="300" min="1"></label>
+              <label>Probabilidad de interés<input id="pi" type="number" step="0.01" min="0" max="1" value="0.6"><small id="piHint"></small></label>
+              <label>Probabilidad de inscripción (base)<input id="pr" type="number" step="0.01" min="0" max="1" value="0.3"></label>
+              <label>Aumento por becas (puntos)<input id="bono" type="number" step="0.01" min="0" max="1" value="0.1"></label>
+              <label>Mínimo de inscritos para abrir<input id="mn" type="number" value="60" min="1"></label>
+              <button class="btn btn-primario">Simular y guardar comparación</button>
+            </form>
+          </div>
+          <div class="nota">
+            <details class="supuestos">
+              <summary>Supuestos del modelo</summary>
+              <ul>
+                <li>Cada titulado potencial se inscribe con probabilidad q = interés × inscripción; los inscritos siguen una distribución Binomial(n, q).</li>
+                <li>Se simulan 5 000 repeticiones por escenario. La probabilidad de abrir es la proporción de repeticiones que alcanza el mínimo.</li>
+                <li>El interés sale de las respuestas del origen de datos elegido; cada área recibe su participación entre quienes eligieron un área.</li>
+                <li>En el escenario con becas, el aumento se suma a la probabilidad de inscripción.</li>
+                <li>Al guardar se registra una comparación: el escenario base y el escenario con becas (dos escenarios por guardado).</li>
+              </ul>
+            </details>
+          </div>
+        </section>
+        <div>
+          <div id="simres" aria-live="polite"></div>
+          <div id="hist"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Administración de respuestas (consultar, editar, eliminar): se dibuja en js/panel/registros.js -->
+    <section class="vista" id="v-registros" hidden>
+      <div id="registros"></div>
+    </section>
+  </main>
 </div>
-<p class="aviso" id="aviso" hidden></p>
-<div id="app"></div>
-<!-- Simulador Monte Carlo: compara el escenario base con el escenario con becas (fuera de #app para conservar los valores escritos) -->
-<section class="panel" id="p-simulacion" hidden><h2 class="ptit">Escenarios de simulación</h2>
-<p class="lead">¿Se abriría el programa? Cada titulado potencial se inscribe con probabilidad igual a <i>interés × inscripción</i>. Se repite el experimento 5 000 veces y se cuenta en cuántas se alcanza el mínimo de inscritos. La probabilidad de interés sale de las respuestas del origen de datos elegido arriba (reales, demostración o ambos) y cada área de posgrado se simula con la participación que tuvo en esas respuestas. Pulse «Simular y guardar» para dejar la corrida registrada junto con ese origen de datos.</p>
-<article class="card metodo"><h3>Método utilizado: simulación Monte Carlo</h3>
-<p class="sub">Se repite muchas veces un experimento aleatorio y se cuenta con qué frecuencia ocurre el resultado buscado.</p>
-<dl class="ficha">
-<div><dt>Modelo</dt><dd>Cada titulado potencial se inscribe o no (ensayo de Bernoulli) con probabilidad <b>q = interés × inscripción</b>.</dd></div>
-<div><dt>Distribución</dt><dd>Inscritos X ~ Binomial(n, q), con n = titulados potenciales.</dd></div>
-<div><dt>Iteraciones</dt><dd>5 000 muestras de X por escenario.</dd></div>
-<div><dt>Generador</dt><dd>Números pseudoaleatorios (<code>JDKRandomGenerator</code>) con semilla fija 42: el resultado es reproducible.</dd></div>
-<div><dt>Probabilidad de abrir</dt><dd>P = (iteraciones con X ≥ mínimo) / 5 000.</dd></div>
-<div><dt>Vínculo con los datos</dt><dd>Interés = proporción de titulados que respondió «SÍ»; cada área recibe su participación entre quienes eligieron un área. Cada corrida guardada conserva el origen de datos y la cantidad de respuestas usadas.</dd></div>
-<div><dt>Escenarios</dt><dd>Base y con becas: la beca suma puntos a la probabilidad de inscripción.</dd></div>
-</dl></article>
-<form class="sim" id="sim"><div class="campos">
-<label>Titulados potenciales<input id="pob" type="number" value="300" min="1"></label>
-<label>Probabilidad de interés<input id="pi" type="number" step="0.01" min="0" max="1" value="0.6"><small id="piHint"></small></label>
-<label>Probabilidad de inscripción (base)<input id="pr" type="number" step="0.01" min="0" max="1" value="0.3"></label>
-<label>Aumento por becas (puntos)<input id="bono" type="number" step="0.01" min="0" max="1" value="0.1"></label>
-<label>Mínimo de inscritos para abrir<input id="mn" type="number" value="60" min="1"></label></div>
-<div class="row"><button>Simular y guardar</button></div></form>
-<div id="simres" aria-live="polite"></div>
-<div id="hist"></div></section>
-</main>
-<script>
-// ============================================================
-// 1. UTILIDADES
-// ============================================================
-// $(id): atajo para buscar un elemento. esc(): escapa texto antes de ponerlo en el HTML (las respuestas las escribe el público).
-// num(): número con coma decimal. corto(): nombre corto de algunas opciones muy largas (el texto completo queda en el tooltip).
-const $=id=>document.getElementById(id);
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const num=(x,d=1)=>String(+(+x).toFixed(d)).replace(".",",");
-const CORTO=[[/^actualmente me encuentro trabajando/i,"Trabaja en una organización"],[/^actualmente no trabajo/i,"No trabaja"],[/^actualmente dedico/i,"Emprendimiento propio (tiempo completo)"],
-[/^financiado con recursos propios/i,"Recursos propios"],[/^financiado parcialmente/i,"Beca parcial"],[/^total financiamiento/i,"Beca total"]];
-const corto=s=>{for(const[r,t]of CORTO)if(r.test(s))return t;return s};
-// Estado: fuente de datos elegida, separador de CSV, últimas estadísticas recibidas.
-let fuente="reales",sep=";",ultimo=null,piEditado=false,tab=(location.hash||"").slice(1);
-// Umbrales de decisión: son criterios de trabajo del equipo. Cámbielos aquí y todo el panel se ajusta.
-const UMB={mayoria:50,concentracion:70,acuerdoBajo:60,acuerdoAlto:80,demandaAlta:60,empleabilidadMin:70,primerTrabajoLento:40,junior:3,nMin:30,margenMax:10};
-// Para qué sirve cada gráfico (se muestra en su tarjeta). PA apunta al diccionario de la pestaña que se está armando.
-const PAT={edad:"Caracteriza a la muestra y permite ver si todas las generaciones de titulados están representadas.",
-genero:"Comprueba que la muestra no esté sesgada hacia un solo género; es un criterio de equidad en la acreditación.",
-tiempoPrimerTrabajo:"Mide la rapidez de inserción laboral: si muchos tardan más de 4 meses, hay que reforzar prácticas y vinculación.",
-situacion:"Es la tasa de inserción laboral, indicador base de empleabilidad del plan estratégico.",
-sector:"Indica con qué tipo de organizaciones conviene firmar convenios (públicas o privadas).",
-rubro:"Muestra en qué campos trabajan los titulados; orienta las líneas de práctica y las alianzas empresariales.",
-departamento:"Revela si los titulados se quedan en la región o migran; sustenta ofrecer modalidades virtuales o híbridas.",
-remuneracion:"Permite estimar el retorno de un posgrado y el precio que el titulado podría pagar.",
-area:"Es la concentración de la demanda de posgrado: decide qué programas abrir primero.",
-orgPosgrado:"Dice dónde pensarían estudiar: identifica a la competencia o a posibles aliados.",
-nivelPosgrado:"Distingue diplomado, especialidad y maestría que ya cursaron: define el nivel y la duración de la oferta.",
-financiamiento:"Detecta restricciones económicas: si domina «recursos propios», hacen falta becas y convenios con la banca.",
-utiles:"Muestra lo que la malla hace bien y no debe perderse al actualizarla.",
-mejorar:"Son las prioridades de mejora que piden los propios titulados: entrada directa a la actualización curricular.",
-ventaja:"Identifica las asignaturas que dieron ventaja en el mercado: candidatas a reforzarse.",
-pocoUtiles:"Identifica asignaturas a revisar, actualizar o volver electivas."};
-const PAE={tipo:"Describe la muestra de organizaciones e indica si la demanda viene del sector público o del privado.",
-tamano:"El tamaño indica con qué organizaciones es viable firmar convenios de prácticas y empleo: las grandes absorben más profesionales.",
-rubro:"Muestra qué industrias demandan Ingenieros de Sistemas y orienta las alianzas y las líneas de especialización.",
-contrato:"Comprueba si las organizaciones ya han contratado titulados: evidencia directa de demanda real.",
-proyeccion:"Es la demanda futura de profesionales: el respaldo más directo de la pertinencia de la Carrera.",
-nivelFormacion:"Si piden más que licenciatura, hay mercado para diplomados, especialidades y maestrías.",
-medio:"Indica por qué canales reclutan: define dónde publicar ofertas y cómo preparar al titulado para postular.",
-cargos:"Muestra los puestos que ocupan los titulados: orienta el perfil de egreso y los posgrados de gestión."};
-let PA=PAT;
 
-// ============================================================
-// 2. COMPONENTES DE GRÁFICO (HTML y SVG propios: no necesitan internet)
-// ============================================================
-// tarjeta(): caja con título, "cómo leerlo", gráfico y lectura en palabras.
-const tarjeta=(t,sub,cuerpo,lec,cls="",para="")=>`<article class="card ${cls}"><h3>${t}</h3><p class="sub">${sub}</p>${para?`<p class="para"><b>Para qué sirve.</b> ${para}</p>`:""}${cuerpo}${lec?`<p class="lectura"><b>Lectura.</b> ${lec}</p>`:""}</article>`;
-const kpi=(v,et,nota,cls="")=>`<div class="k ${cls}"><b>${v}</b><span>${et}</span>${nota?`<em>${nota}</em>`:""}</div>`;
-const subN=d=>d&&d.total?`${d.multiple?"Cada persona pudo marcar varias opciones. ":""}n = ${d.total} ${d.total==1?"respuesta":"respuestas"}`:"Sin respuestas todavía";
-
-// barras(): barras horizontales ordenadas. La más alta va en verde oscuro. Escala 0 a (máximo redondeado a la decena).
-function barras(d){if(!d||!d.total)return'<p class="vacio">Sin respuestas.</p>';
-const max=Math.max(...d.filas.map(f=>f.pct)),esc10=Math.min(100,Math.ceil(max/10)*10)||10;
-return'<div class="bars">'+d.filas.map(f=>`<div class="bar${f.pct===max?" top":""}" title="${esc(f.opcion)}: ${f.n} de ${d.total}"><span class="l">${esc(corto(f.opcion))}</span><span class="t"><i style="width:${f.pct/esc10*100}%"></i></span><span class="v"><b>${num(f.pct)} %</b><small>${f.n}</small></span></div>`).join("")+"</div>"}
-
-// hist(): columnas verticales (histograma). Las dos primeras son los juniors (hasta 3 años).
-function hist(d){const max=Math.max(1,...d.filas.map(f=>f.pct));
-return`<div class="leyenda"><span><i style="background:var(--teal2)"></i>Junior (hasta 3 años)</span><span><i style="background:var(--teal)"></i>Consolidado (más de 3 años)</span></div><div class="hist">`+d.filas.map((f,i)=>`<div class="col" title="${esc(f.opcion)}: ${f.n} personas"><div class="bw"><span class="hv">${num(f.pct)} %</span><i class="${i<2?"jr":""}" style="height:${f.pct/max*82}%"></i></div><span class="hl">${esc(f.opcion)}</span></div>`).join("")+"</div>"}
-
-// likert(): una barra apilada al 100 % por afirmación (de desacuerdo, en ámbar, a acuerdo, en verde) y la media ± desviación.
-const NIV4=["Totalmente en desacuerdo","En desacuerdo","De acuerdo","Totalmente de acuerdo"],COL4=["#b45309","#e2b072","#7fc4bc","#0f766e"],CL4=[0,1,1,0];
-const NIV3=["Totalmente en desacuerdo","Parcialmente de acuerdo","Totalmente de acuerdo"],COL3=["#b45309","#7fc4bc","#0f766e"],CL3=[0,1,0];
-function likert(items,niv,col,cl){const v=items.filter(x=>x.l.n>0);if(!v.length)return'<p class="vacio">Sin respuestas.</p>';
-return`<div class="leyenda">${niv.map((n,i)=>`<span><i style="background:${col[i]}"></i>${n}</span>`).join("")}</div>`+v.map(({label,l})=>`<div class="lk"><div class="lkt"><span>${esc(label)}${l.noSabe?` <span class="ns">· «No sabe»: ${l.noSabe}</span>`:""}</span><b title="media ± desviación estándar (n = ${l.n})">${num(l.media,2)} <small>± ${num(l.sd,2)}</small></b></div><div class="seg" role="img" aria-label="${esc(label)}: ${num(l.acuerdo)} % de acuerdo">${l.pct.map((p,i)=>p>0?`<span class="${cl[i]?"cl":""}" style="width:${p}%;background:${col[i]}" title="${niv[i]}: ${num(p)} %">${p>=8?num(p,0)+" %":""}</span>`:"").join("")}</div></div>`).join("")}
-
-// heat(): tabla de contingencia como mapa de calor. Cada celda: casos y % de su fila.
-// Color: verde = más casos de los esperados, ámbar = menos (residuo estandarizado). Borde = |z| > 1,96.
-function heat(c){if(!c.n)return`<p class="vacio">${esc(c.aviso||"Sin datos.")}</p>`;
-const F=c.filas,C=c.columnas,ft=F.map((_,i)=>c.matriz[i].reduce((a,b)=>a+b,0)),ct=C.map((_,j)=>F.reduce((a,_x,i)=>a+c.matriz[i][j],0)),conT=c.chi2!=null;
-const celda=(i,j)=>{const o=c.matriz[i][j],z=conT?c.residuales[i][j]:0,a=Math.min(.78,Math.abs(z)/3*.78),bg=z>=0?`rgba(15,118,110,${a})`:`rgba(180,83,9,${a})`,fuerte=a>.5;
-return`<td class="${Math.abs(z)>1.96?"sig":""}" style="background:${conT?bg:"#edf1f5"};${fuerte?"color:#fff":""}" title="${esc(F[i])} · ${esc(C[j])}: ${o} casos${conT?` (esperados: ${num(c.esperados[i][j])}; z = ${num(z,2)})`:""}"><b>${o}</b><small>${ft[i]?num(o*100/ft[i],0):0} %</small></td>`};
-return`<div class="scroll"><table class="heat"><tr><th class="f">${esc(c.filaNombre)} ↓ · ${esc(c.colNombre)} →</th>${C.map(x=>`<th>${esc(corto(x))}</th>`).join("")}<th class="tot">Total</th></tr>`+
-F.map((f,i)=>`<tr><th class="f" title="${esc(f)}">${esc(corto(f))}</th>${C.map((_,j)=>celda(i,j)).join("")}<td class="tot"><b>${ft[i]}</b><small>100 %</small></td></tr>`).join("")+
-`<tr><th class="f tot">Total</th>${ct.map(x=>`<td class="tot"><b>${x}</b><small>${num(x*100/c.n,0)} %</small></td>`).join("")}<td class="tot"><b>${c.n}</b></td></tr></table></div>`+
-(conT?`<div class="leyenda-heat"><span><i style="background:rgba(15,118,110,.6)"></i>Más casos de los esperados</span><span><i style="background:rgba(180,83,9,.6)"></i>Menos de los esperados</span><span><i style="box-shadow:inset 0 0 0 2px var(--ink)"></i>Diferencia que el azar no explica (|z| &gt; 1,96)</span></div>`:"")}
-
-// ============================================================
-// 3. LECTURAS EN PALABRAS (se generan a partir de los números)
-// ============================================================
-const orden=d=>d.filas.slice().sort((a,b)=>b.n-a.n);
-function lecDist(d,multi){if(!d||!d.total)return"";const[a,b0]=orden(d),b=b0&&b0.n>0?b0:null;
-if(!multi&&b&&a.n===b.n)return`Hay empate entre «${esc(corto(a.opcion))}» y «${esc(corto(b.opcion))}» (${num(a.pct)} % cada una).`;
-return multi?`La más mencionada es «${esc(corto(a.opcion))}» (${num(a.pct)} % de quienes respondieron)`+(b?`, después «${esc(corto(b.opcion))}» (${num(b.pct)} %).`:"."):
-`Predomina «${esc(corto(a.opcion))}» (${num(a.pct)} %)`+(b?`, seguida de «${esc(corto(b.opcion))}» (${num(b.pct)} %).`:".")}
-// Regla práctica: si dos áreas concentran más del 70 % de las preferencias, se justifica abrir programas modulares o híbridos.
-function lecArea(d){if(!d||!d.total)return"";const t=orden(d).slice(0,2),s=t.reduce((x,f)=>x+f.pct,0),nom=t.map(f=>`«${esc(f.opcion)}»`).join(" y ");
-return`${nom} concentran el ${num(s)} % de las preferencias. `+(s>70?"Supera el 70 %: hay una concentración clara que respalda abrir programas modulares o híbridos en esas áreas.":"No llega al 70 %: la demanda está repartida entre varias áreas y conviene una oferta más variada.")}
-function lecAnios(a,j,c){const tot=j+c;let t=`En promedio llevan ${num(a.media)} años de vida profesional (mediana ${num(a.mediana)}; desviación estándar ${num(a.sd)}). El ${num(j*100/tot,0)} % son junior (hasta 3 años) y el ${num(c*100/tot,0)} % consolidados.`;
-if(a.media>a.mediana*1.25&&a.sd>0)t+=" El promedio supera a la mediana: unos pocos titulados con mucha trayectoria lo elevan, así que la mediana describe mejor al titulado típico.";return t}
-function lecLikert(items,txt){const v=items.filter(x=>x.l.n>0).sort((a,b)=>b.l.acuerdo-a.l.acuerdo);if(v.length<2)return"";const a=v[0],b=v[v.length-1];
-if(a.l.acuerdo===b.l.acuerdo)return`Todas las afirmaciones tienen el mismo nivel de acuerdo (${num(a.l.acuerdo)} % ${txt}).`;
-return`Mayor acuerdo: «${esc(a.label)}» (${num(a.l.acuerdo)} % ${txt}). Menor acuerdo: «${esc(b.label)}» (${num(b.l.acuerdo)} %), el punto más débil de la valoración.`}
-const efecto=(v,k)=>{const t=k<=1?[.1,.3,.5]:k==2?[.07,.21,.35]:[.06,.17,.29];return v<t[0]?"muy débil":v<t[1]?"débil":v<t[2]?"moderada":"fuerte"};
-function lecCruce(c){if(c.chi2==null)return esc(c.aviso||"");
-const k=Math.min(c.filas.length-1,c.columnas.length-1),A=esc(c.filaNombre.toLowerCase()),B=esc(c.colNombre.toLowerCase());
-if(!c.confiable)return"Con tan pocos casos por celda la tabla sirve para describir, no para concluir: no afirme que las variables estén (o no) relacionadas.";
-if(c.p>=.05)return`No hay evidencia suficiente de que ${A} y ${B} estén relacionados (${pTxt(c.p)}, α = 0,05): lo observado es compatible con el azar.`;
-const cel=[];c.filas.forEach((f,i)=>c.columnas.forEach((x,j)=>{if(Math.abs(c.residuales[i][j])>1.96)cel.push({f,x,z:c.residuales[i][j],o:c.matriz[i][j],e:c.esperados[i][j]})}));
-cel.sort((a,b)=>Math.abs(b.z)-Math.abs(a.z));
-return`Sí hay asociación entre ${A} y ${B} (${pTxt(c.p)}, α = 0,05), de intensidad ${efecto(c.cramerV,k)} (V de Cramér = ${num(c.cramerV,2)}). `+(cel.length?"Lo que más se aparta del azar: "+cel.slice(0,2).map(x=>`«${esc(corto(x.f))}» con «${esc(corto(x.x))}» (${x.o} casos; se esperaban ${num(x.e)}, ${x.z>0?"más":"menos"} de lo esperado)`).join("; ")+".":"")}
-
-// ============================================================
-// 3b. DECISIONES, ESTADÍSTICA DESCRIPTIVA Y CONTRASTES
-// ============================================================
-// chip(): etiqueta de estado. ok = hay base para actuar / fortaleza; at = atender; mal = brecha o problema.
-const chip=(k,t)=>`<span class="est est-${k}">${t}</span>`;
-const nice=v=>v<=10?Math.ceil(v):v<=30?Math.ceil(v/5)*5:Math.ceil(v/10)*10;
-const envolver=(t,w)=>{const o=[];let l="";t.split(" ").forEach(p=>{if((l+" "+p).trim().length>w){o.push(l);l=p}else l=(l+" "+p).trim()});o.push(l);return o};
-
-// radarC(): radar con dos series (% de acuerdo de titulados y de empleadores) sobre las mismas afirmaciones.
-function radarC(ejes,A,B){const n=ejes.length,W=520,H=330,cx=W/2,cy=H/2+4,R=98,ang=i=>-Math.PI/2+2*Math.PI*i/n,pt=(i,x)=>[cx+R*x/100*Math.cos(ang(i)),cy+R*x/100*Math.sin(ang(i))];
-const poly=x=>ejes.map((_,i)=>pt(i,x).map(c=>c.toFixed(1)).join(",")).join(" "),ani=[25,50,75,100];
-let s=`<svg class="radar" viewBox="0 0 ${W} ${H}" role="img" aria-label="Radar: porcentaje de acuerdo de titulados y de empleadores">`;
-ani.forEach(r=>s+=`<polygon class="anillo" points="${poly(r)}"/>`);
-ejes.forEach((t,i)=>{const[x,y]=pt(i,100),[lx,ly]=pt(i,128),c=Math.cos(ang(i)),an=c>.25?"start":c<-.25?"end":"middle",ls=envolver(t,22);
-s+=`<line class="eje" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/><text text-anchor="${an}" x="${lx.toFixed(1)}" y="${(ly-(ls.length-1)*7).toFixed(1)}">${ls.map((u,j)=>`<tspan x="${lx.toFixed(1)}" dy="${j?14:0}">${esc(u)}</tspan>`).join("")}</text>`});
-ani.forEach(r=>s+=`<text class="esc" x="${cx+4}" y="${(cy-R*r/100-2).toFixed(1)}">${r} %</text>`);
-const ser=(V,cl,nom)=>`<polygon class="${cl}" points="${V.map((v,i)=>pt(i,v).map(c=>c.toFixed(1)).join(",")).join(" ")}"/>`+V.map((v,i)=>{const[x,y]=pt(i,v);return`<circle class="${cl}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4"><title>${nom} · ${esc(ejes[i])}: ${num(v,0)} %</title></circle>`}).join("");
-return s+ser(B,"area2","Empleadores")+ser(A,"area","Titulados")+`</svg><div class="leyenda"><span><i style="background:var(--teal)"></i>Titulados</span><span><i style="background:var(--amber)"></i>Empleadores</span></div>`}
-
-// caja(): diagrama de caja horizontal. Caja = Q1 a Q3; raya = mediana; rombo = media; bigotes = datos dentro de las vallas de Tukey; puntos = atípicos.
-function caja(a){if(!a||a.n<4)return'<p class="vacio">Se necesitan al menos 4 respuestas para dibujar el diagrama de caja.</p>';
-const W=640,H=118,m={l:18,r:18},top=nice(Math.max(a.max,5)),X=v=>m.l+v/top*(W-m.l-m.r),y=44,h=34,paso=top<=10?1:top<=30?5:10;
-let s=`<svg class="caja" viewBox="0 0 ${W} ${H}" role="img" aria-label="Diagrama de caja de los años de vida profesional">`;
-for(let v=0;v<=top;v+=paso)s+=`<line x1="${X(v)}" x2="${X(v)}" y1="${y+h/2+26}" y2="${y+h/2+31}" stroke="#9aa6b5"/><text x="${X(v)}" y="${H-3}" text-anchor="middle">${v}</text>`;
-s+=`<line x1="${X(0)}" x2="${X(top)}" y1="${y+h/2+26}" y2="${y+h/2+26}" stroke="#9aa6b5"/>`+
-`<line x1="${X(a.bigoteInf)}" x2="${X(a.q1)}" y1="${y+h/2}" y2="${y+h/2}" stroke="#14202e" stroke-width="2"/><line x1="${X(a.q3)}" x2="${X(a.bigoteSup)}" y1="${y+h/2}" y2="${y+h/2}" stroke="#14202e" stroke-width="2"/>`+
-`<line x1="${X(a.bigoteInf)}" x2="${X(a.bigoteInf)}" y1="${y+8}" y2="${y+h-8}" stroke="#14202e" stroke-width="2"/><line x1="${X(a.bigoteSup)}" x2="${X(a.bigoteSup)}" y1="${y+8}" y2="${y+h-8}" stroke="#14202e" stroke-width="2"/>`+
-`<rect x="${X(a.q1)}" y="${y}" width="${Math.max(2,X(a.q3)-X(a.q1))}" height="${h}" fill="#7fc4bc" fill-opacity=".55" stroke="#0f766e" stroke-width="2"/>`+
-`<line x1="${X(a.mediana)}" x2="${X(a.mediana)}" y1="${y}" y2="${y+h}" stroke="#14202e" stroke-width="3"/><text x="${X(a.mediana)}" y="${y-8}" text-anchor="middle" style="font-weight:700">Mediana ${num(a.mediana)}</text>`+
-`<polygon points="${X(a.media)},${y+h/2-7} ${X(a.media)+7},${y+h/2} ${X(a.media)},${y+h/2+7} ${X(a.media)-7},${y+h/2}" fill="#b45309" stroke="#fff"><title>Media: ${num(a.media)}</title></polygon>`+
-a.atipicos.map(v=>`<circle cx="${X(v)}" cy="${y+h/2}" r="5" fill="none" stroke="#b45309" stroke-width="2"><title>Valor atípico: ${num(v)}</title></circle>`).join("")+`</svg>`;
-return s+`<div class="leyenda"><span><i style="background:#7fc4bc"></i>Caja: Q1 = ${num(a.q1)} a Q3 = ${num(a.q3)}</span><span><i style="background:var(--amber)"></i>Media = ${num(a.media)}</span><span>Bigotes: ${num(a.bigoteInf)} a ${num(a.bigoteSup)}</span><span>${a.atipicos.length?`Atípicos (○): ${a.atipicos.map(v=>num(v)).join(", ")}`:"Sin valores atípicos"}</span></div>`}
-
-// COTAS: límites superiores de las clases de años de vida profesional (la última llega al máximo observado).
-const COTAS=[1,3,5,10];
-// ojiva(): % acumulado de titulados con "x años o menos". La línea punteada marca el corte junior (3 años).
-function ojiva(s){const h=s.aniosHist,a=s.anios;if(!h||!h.total)return'<p class="vacio">Sin respuestas.</p>';
-const xm=Math.max(Math.ceil(a.max),12),xs=[0,...COTAS,xm],ys=[0,...h.filas.map(f=>f.acum)];ys[ys.length-1]=100;
-const W=640,H=250,m={l:46,r:18,t:16,b:40},X=v=>m.l+v/xm*(W-m.l-m.r),Y=v=>H-m.b-v/100*(H-m.t-m.b);
-let g=`<svg class="ojiva" viewBox="0 0 ${W} ${H}" role="img" aria-label="Ojiva: porcentaje acumulado de titulados según años de vida profesional">`;
-[0,25,50,75,100].forEach(v=>g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#e3e8ee"/><text x="${m.l-6}" y="${Y(v)+4}" text-anchor="end">${v} %</text>`);
-xs.forEach(v=>g+=`<text x="${X(v)}" y="${H-m.b+16}" text-anchor="middle">${v===xm&&xm>10?"máx.":v}</text>`);
-g+=`<line x1="${X(3)}" x2="${X(3)}" y1="${m.t}" y2="${Y(0)}" stroke="#14202e" stroke-dasharray="5 4" stroke-width="1.5"/><text x="${X(3)+6}" y="${Y(10)}" style="font-weight:600">Corte junior: 3 años (${num(ys[2],0)} % o menos)</text>`+
-`<polyline fill="none" stroke="#0f766e" stroke-width="2.5" points="${xs.map((v,i)=>`${X(v).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(" ")}"/>`+
-xs.map((v,i)=>`<circle cx="${X(v).toFixed(1)}" cy="${Y(ys[i]).toFixed(1)}" r="4" fill="#0f766e"><title>${num(ys[i],0)} % lleva ${v===xm&&xm>10?"hasta el máximo":v+" años o menos"}</title></circle>`).join("")+
-`<text x="${W/2}" y="${H-2}" text-anchor="middle">Años de vida profesional</text></svg>`;return g}
-
-// tablaFrec(): tabla de frecuencias por clases (clase, marca de clase, fi, hi, Fi, Hi).
-function tablaFrec(s){const h=s.aniosHist,a=s.anios;if(!h||!h.total)return"";const mx=Math.max(a.max,10);
-const cl=["[0 – 1]","(1 – 3]","(3 – 5]","(5 – 10]",`(10 – ${num(mx)}]`],mc=[.5,2,4,7.5,(10+mx)/2];let F=0;
-const fila=h.filas.map((f,i)=>{F+=f.n;return`<tr><td>${cl[i]} <small>${esc(f.opcion)}</small></td><td>${f.n?num(mc[i],2):"–"}</td><td>${f.n}</td><td>${num(f.pct)} %</td><td>${F}</td><td>${num(i==4?100:f.acum)} %</td></tr>`}).join("");
-return`<div class="scroll"><table class="res"><tr><th>Clase (años)</th><th>Marca de clase</th><th>fi</th><th>hi</th><th>Fi</th><th>Hi</th></tr>${fila}<tr class="tot"><td>Total</td><td></td><td>${h.total}</td><td>100 %</td><td></td><td></td></tr></table></div><p class="nota-t">fi = frecuencia absoluta · hi = relativa · Fi y Hi = acumuladas. Las clases no tienen el mismo ancho porque se alinean con la segmentación junior (hasta 3 años); por eso se usa ojiva y no polígono de frecuencias.</p>`}
-
-// tablaDesc(): todas las medidas descriptivas con su lectura.
-function tablaDesc(a){if(!a||!a.n)return"";const ric=a.q3-a.q1,lo=a.q1-1.5*ric,hi=a.q3+1.5*ric,g=a.asimetria;
-const cv=a.cv<15?"Variabilidad baja: grupo homogéneo.":a.cv<30?"Variabilidad moderada.":"Variabilidad alta: grupo heterogéneo; conviene segmentar (junior y consolidado) y usar la mediana.";
-const as=Math.abs(g)<.5?"Distribución aproximadamente simétrica.":g>0?`Asimétrica a la derecha (${Math.abs(g)<1?"moderada":"fuerte"}): pocos titulados con mucha trayectoria jalan la media hacia arriba.`:`Asimétrica a la izquierda (${Math.abs(g)<1?"moderada":"fuerte"}): predominan los de mayor trayectoria.`;
-const R=[["Tamaño de la muestra (n)",a.n,"Titulados con respuesta válida."],["Media (x̄)",num(a.media)+" años","Promedio aritmético; lo afectan los valores extremos."],["Mediana",num(a.mediana)+" años","El 50 % lleva esta cantidad de años o menos."],
-["Moda",a.moda==null?"Sin moda":num(a.moda)+" años",a.moda==null?"Ningún valor se repite.":"Es el valor más frecuente."],["Rango",num(a.rango)+" años",`Del titulado con menos (${num(a.min)}) al de más años (${num(a.max)}).`],
-["Varianza (s²)",num(a.varianza,2),"Dispersión al cuadrado, dividida entre n − 1."],["Desviación estándar (s)",num(a.sd)+" años","En promedio, los datos se alejan s años de la media."],["Coeficiente de variación",num(a.cv)+" %",cv],
-["Cuartiles Q1 y Q3",`${num(a.q1)} y ${num(a.q3)} años`,"El 25 % queda por debajo de Q1 y el 25 % por encima de Q3 (la caja del diagrama)."],["Percentil 90 (P90)",num(a.p90)+" años","El 90 % lleva esta cantidad de años o menos."],
-["Asimetría",num(g,2),as],["Valores atípicos",a.atipicos.length?a.atipicos.map(v=>num(v)).join(", ")+" años":"Ninguno",`Fuera de [${num(lo)} ; ${num(hi)}] (regla de Tukey: Q1 − 1,5·RIC y Q3 + 1,5·RIC).`]];
-return`<div class="scroll"><table class="res txt"><tr><th>Medida</th><th>Valor</th><th>Cómo leerla</th></tr>${R.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td></tr>`).join("")}</table></div>`}
-
-// brecha(): semáforo por afirmación según el % de acuerdo. Umbrales en UMB.
-function brecha(items){const v=items.filter(x=>x.l.n>0).sort((a,b)=>a.l.acuerdo-b.l.acuerdo);if(!v.length)return"";
-const est=p=>p<UMB.acuerdoBajo?chip("mal","Brecha: revisar"):p<UMB.acuerdoAlto?chip("at","Atención"):chip("ok","Fortaleza");
-return`<div class="scroll"><table class="res txt"><tr><th>Afirmación</th><th>n</th><th>Media ± s</th><th>% de acuerdo</th><th>Estado</th></tr>${v.map(({label,l})=>`<tr><td>${esc(label)}</td><td>${l.n}</td><td>${num(l.media,2)} ± ${num(l.sd,2)}</td><td><b>${num(l.acuerdo,0)} %</b></td><td>${est(l.acuerdo)}</td></tr>`).join("")}</table></div><p class="nota-t">Brecha: menos de ${UMB.acuerdoBajo} % de acuerdo. Atención: entre ${UMB.acuerdoBajo} % y ${UMB.acuerdoAlto} %. Fortaleza: ${UMB.acuerdoAlto} % o más. «De acuerdo» = niveles 3 y 4 de la escala.</p>`}
-
-// PARES: afirmaciones de titulados y de empleadores que miden lo mismo desde dos miradas (comparación referencial).
-const PARES=[["Formación coherente con el desempeño","concordancia","fp5"],["Satisfacción y confianza en la Carrera","satisfaccion","fp1"],["Competencias aplicadas en el trabajo","pertinencia","fp8"]];
-function contraste(s){if(!s.nTitulados||!s.nEmpleadores)return"";const p=PARES.filter(([,t,e])=>s.likertT[t]&&s.likertE[e]&&s.likertT[t].n>0&&s.likertE[e].n>0);if(p.length<3)return"";
-const A=p.map(([,t])=>s.likertT[t].acuerdo),B=p.map(([,,e])=>s.likertE[e].acuerdo),dif=p.map((_,i)=>B[i]-A[i]),k=dif.map(Math.abs).indexOf(Math.max(...dif.map(Math.abs)));
-const lec=Math.abs(dif[k])<10?"Titulados y empleadores coinciden en su valoración (diferencias menores de 10 puntos).":`La mayor distancia está en «${esc(p[k][0])}»: ${dif[k]<0?"los empleadores lo valoran menos que los titulados; los titulados se ven más preparados de lo que observa el mercado":"los empleadores lo valoran más que los titulados; los titulados se perciben menos preparados de lo que ve el mercado"} (${num(Math.abs(dif[k]),0)} puntos).`;
-const tabla=`<div class="scroll"><table class="res txt"><tr><th>Aspecto</th><th>Titulados</th><th>Empleadores</th><th>Diferencia</th></tr>${p.map((r,i)=>`<tr><td>${esc(r[0])}</td><td>${num(A[i],0)} %</td><td>${num(B[i],0)} %</td><td>${dif[i]>0?"+":""}${num(dif[i],0)} pts</td></tr>`).join("")}</table></div>`;
-return tarjeta("Contraste: lo que dicen los titulados y lo que observan los empleadores","Porcentaje de acuerdo en afirmaciones equivalentes. Los titulados usan una escala de 4 niveles («de acuerdo» = 3 y 4) y los empleadores de 3 («de acuerdo» = parcial o total), por eso se comparan porcentajes y no medias: la comparación es referencial.",radarC(p.map(r=>r[0]),A,B)+tabla,lec,"ancho","Ver si la formación se juzga igual desde dentro y desde fuera: una distancia grande indica qué competencias revisar con las empresas.")}
-
-// decisiones(): reglas simples que convierten los números en acciones. Cada fila muestra la evidencia, la regla y la decisión.
-function decisiones(s){const R=[],d=s.distT,e=s.distE,add=(tema,ev,regla,acc,nv)=>R.push({tema,ev,regla,acc,nv}),suma=(dd,re)=>dd&&dd.total?dd.filas.filter(f=>re.test(f.opcion)).reduce((x,f)=>x+f.pct,0):null;
-if(s.nTitulados){const pi=s.pctInteres*100,tot=s.junior+s.consolidado,pj=tot?s.junior*100/tot:0;
-add("Demanda de posgrado",`${num(pi,0)} % de los titulados quiere un posgrado.`,`Mayoría si llega a ${UMB.mayoria} %.`,pi>=UMB.mayoria?"Hay demanda: pase a la pestaña Simulación para ver la probabilidad de abrir un programa.":"La demanda es minoritaria: empiece con diplomados o módulos cortos antes de una maestría.",pi>=UMB.mayoria?"ok":"at");
-if(d.area&&d.area.total){const t=orden(d.area).slice(0,2),sm=t.reduce((x,f)=>x+f.pct,0),nom=t.map(f=>`«${esc(f.opcion)}»`).join(" y ");
-add("Áreas de posgrado a abrir",`${nom} reúnen ${num(sm,0)} % de las preferencias.`,`Concentración si pasan de ${UMB.concentracion} %.`,sm>UMB.concentracion?`Concentre la oferta en ${nom}, en formato modular o híbrido.`:"La demanda está repartida: ofrezca módulos comunes y especialice después según la matrícula.",sm>UMB.concentracion?"ok":"at")}
-const fp=suma(d.financiamiento,/recursos propios/i);if(fp!=null)add("Financiamiento",`${num(fp,0)} % de quienes estudiaron un posgrado lo pagó con recursos propios.`,`Dependencia si llega a ${UMB.mayoria} %.`,fp>=UMB.mayoria?"Hay dependencia económica: gestione becas institucionales y convenios con la banca.":"Predominan becas u otras fuentes: mantenga los convenios vigentes.",fp>=UMB.mayoria?"at":"ok");
-if(tot)add("Madurez profesional",`${num(pj,0)} % son junior (hasta ${UMB.junior} años).`,`Mayoría junior si llega a ${UMB.mayoria} %.`,pj>=UMB.mayoria?"Priorice diplomados y especialidades de entrada, que dan el primer escalón de especialización.":"Predominan los consolidados: priorice maestrías y programas de gestión.","in");
-const tr=suma(d.situacion,/trabajando|emprendimiento/i);if(tr!=null)add("Inserción laboral",`${num(tr,0)} % trabaja o emprende.`,`Aceptable desde ${UMB.empleabilidadMin} %.`,tr>=UMB.empleabilidadMin?"La inserción es alta: use este dato como evidencia de pertinencia.":"La inserción es baja: refuerce la bolsa de trabajo y la vinculación con empresas.",tr>=UMB.empleabilidadMin?"ok":"mal");
-const lento=suma(d.tiempoPrimerTrabajo,/(4\s*[-–]\s*8|8\s*[-–]\s*12|m[aá]s de 12)/i);if(lento!=null)add("Rapidez del primer empleo",`${num(lento,0)} % tardó más de 4 meses en conseguir su primer trabajo.`,`Lento si llega a ${UMB.primerTrabajoLento} %.`,lento>=UMB.primerTrabajoLento?"Incremente prácticas profesionales y pasantías antes de la titulación.":"La transición al empleo es rápida: mantenga las prácticas actuales.",lento>=UMB.primerTrabajoLento?"at":"ok");
-const br=Object.keys(LT).map(k=>({k,l:s.likertT[k]})).filter(x=>x.l&&x.l.n>0&&x.l.acuerdo<UMB.acuerdoBajo);
-add("Brechas de formación",br.length?`${br.length} afirmación(es) bajo ${UMB.acuerdoBajo} % de acuerdo: ${br.map(x=>`«${esc(LT[x.k])}» (${num(x.l.acuerdo,0)} %)`).join("; ")}.`:`Ninguna afirmación baja de ${UMB.acuerdoBajo} % de acuerdo.`,`Brecha si el acuerdo es menor de ${UMB.acuerdoBajo} %.`,br.length?"Lleve estos puntos a la revisión de la malla curricular.":"No hay brechas fuertes; vigile las afirmaciones en «Atención» (pestaña Titulados).",br.length?"mal":"ok");
-if(d.pocoUtiles&&d.pocoUtiles.total&&d.mejorar&&d.mejorar.total){const a=orden(d.pocoUtiles).slice(0,2).map(f=>`«${esc(f.opcion)}»`).join(" y "),b=orden(d.mejorar)[0];add("Revisión de la malla",`Asignaturas más señaladas como poco útiles: ${a}. Mejora más pedida: «${esc(b.opcion)}».`,"Se toman las más mencionadas.","Evalúe actualizar, fusionar o volver electivas esas asignaturas, y priorice la mejora más pedida.","at")}}
-if(s.nEmpleadores){const pr=prevE(s),pg=suma(e.nivelFormacion,/^(?!licenciatura)/i);
-add("Demanda del mercado",`${num(pr,0)} % de las organizaciones prevé contratar Ingenieros de Sistemas.`,`Demanda alta desde ${UMB.demandaAlta} %.`,pr>=UMB.demandaAlta?"El sector respalda la pertinencia de la Carrera; úselo en el informe de acreditación.":"La demanda es moderada: busque convenios con las organizaciones que sí contratan.",pr>=UMB.demandaAlta?"ok":"at");
-if(pg!=null)add("Nivel de formación que piden",`${num(pg,0)} % de las organizaciones demanda un nivel superior a la licenciatura.`,`Respaldo si llega a ${UMB.mayoria} %.`,pg>=UMB.mayoria?"El mercado pide posgrado: respalda abrir diplomados y especialidades.":"El mercado se conforma con la licenciatura: ofrezca posgrado como diferenciador, no como requisito.",pg>=UMB.mayoria?"ok":"at")}
-const nT=s.nTitulados,mg=s.muestra.margenTitulados;
-add("Confiabilidad de los datos",`${s.nTitulados} titulados y ${s.nEmpleadores} empleadores; margen de error referencial de ± ${num(mg)} puntos en titulados.`,`Se pide al menos ${UMB.nMin} titulados y margen de ${UMB.margenMax} puntos o menos.`,nT>=UMB.nMin&&mg<=UMB.margenMax?"Los resultados son lo bastante estables para sustentar decisiones.":"Trate las conclusiones como preliminares y reúna más respuestas antes de decidir.",nT>=UMB.nMin&&mg<=UMB.margenMax?"ok":"at");
-const t=R.map(r=>`<tr><td><b>${r.tema}</b></td><td>${r.ev}</td><td>${r.regla}</td><td>${chip(r.nv,r.nv=="ok"?"Respaldo":r.nv=="in"?"Orienta":r.nv=="at"?"Atender":"Brecha")} ${r.acc}</td></tr>`).join("");
-return tarjeta("Decisiones sugeridas","Cada fila convierte un resultado en una acción: qué dicen los datos, qué regla se aplicó y qué se recomienda hacer.",`<div class="scroll"><table class="res txt dec"><tr><th>Tema</th><th>Qué dicen los datos</th><th>Regla</th><th>Decisión</th></tr>${t}</table></div><p class="nota-t">Las reglas y umbrales son criterios de trabajo del equipo (se ajustan en la constante UMB al inicio del script) y las respuestas deben ser reales: con datos de demostración las decisiones no valen.</p>`,"","ancho","Es el punto de partida para el Plan de Desarrollo Estratégico: lo que aquí aparece como «Brecha» o «Atender» es lo primero que hay que discutir con la Dirección de Carrera.")}
-
-// ============================================================
-// 4. PANELES (cada pestaña es un panel)
-// ============================================================
-// Títulos de las preguntas de opción única, usados en las tarjetas y en la tabla de uniformidad.
-const TT={edad:"Edad",genero:"Género",situacion:"Situación laboral actual",tiempoPrimerTrabajo:"Tiempo en conseguir el primer trabajo",numEmpleos:"Cantidad de empleos desde la titulación",nivelPosgrado:"Mayor nivel de formación complementaria",financiamiento:"Fuente de financiamiento",area:"Área de posgrado de interés",orgPosgrado:"Organización donde estudiarían el posgrado",rubro:"Rubro de la organización",sector:"Sector (público o privado)",departamento:"Departamento",remuneracion:"Remuneración mensual promedio"};
-const TE={tipo:"Tipo de organización",tamano:"Tamaño de la organización",rubro:"Rubro o sector principal",contrato:"¿Contrataron Ingenieros de Sistemas en los últimos 5 años?",proyeccion:"¿Podrían incorporar Ingenieros de Sistemas?",nivelFormacion:"Nivel de formación que demandan",medio:"Cómo convocan a profesionales"};
-const SUBT={nivelPosgrado:"Solo quienes cursaron formación complementaria. ",financiamiento:"Del programa que cursaron. ",area:"Solo quienes están interesados. ",orgPosgrado:"Solo quienes están interesados. ",sector:"Solo quienes trabajan en una organización. ",rubro:"",departamento:"Solo quienes trabajan en una organización. ",remuneracion:"Solo quienes trabajan en una organización. "};
-// bc(): tarjeta de barras de una pregunta (título, n, barras y lectura).
-const bc=(d,k,tit,sub="",multi=false,cls="",lec)=>tarjeta(tit,sub+subN(d),barras(d),lec??(k==="area"?lecArea(d):lecDist(d,multi)),cls,PA[k]||"");
-// grupo(): bloque plegable dentro de una pestaña.
-const grupo=(tit,n,html,abierto)=>`<details class="grupo"${abierto?" open":""}><summary>${tit} <small>${n} ${n==1?"gráfico":"gráficos"}</small></summary>${html}</details>`;
-const panel=(titulo,lead,html)=>`<h2 class="ptit">${titulo}</h2>${lead?`<p class="lead">${lead}</p>`:""}${html}`;
-const expandir=`<div class="dl"><a href="#" data-exp="1" role="button">Expandir todo</a><a href="#" data-exp="0" role="button">Contraer todo</a></div>`;
-const LT={opinionPosgrado:"Existen posgrados de la FCyT afines a Sistemas",pertinencia:"Mi trabajo es pertinente a mi formación",satisfaccion:"Satisfacción global con la formación recibida",concordancia:"La formación concuerda con lo que exige el trabajo"};
-const FPL={fp1:"Confianza en la Carrera como formadora",fp2:"Título consistente con las competencias",fp3:"Las autoridades nos consultan sobre el perfil",fp4:"Conozco el perfil de egreso",fp5:"Perfil coherente con el desempeño",fp6:"La formación permite un desempeño destacado",fp7:"La Carrera incorpora nuestra opinión",fp8:"Competencias laborales demostradas",fp9:"Valores y ética demostrados",fp10:"Participé en recopilación de información"},
-VCL={vc1:"Vínculos que generan oportunidades",vc2:"Participé en vinculación con el entorno",vc3:"Participé en difusión de oportunidades",vc4:"Participé en vinculación entre actores",vc5:"Me consultaron sobre el desempeño",vc6:"Me consultaron sobre la pertinencia",vc7:"Recurrimos a la UMSS para buscar talento",vc8:"Me consultaron en la autoevaluación"};
-const pTxt=p=>p<.0001?"p < 0,0001":"p = "+num(p,4);
-const prevE=s=>s.distE?s.distE.proyeccion.filas.filter(f=>/^s[ií],/i.test(f.opcion)).reduce((a,f)=>a+f.pct,0):0;
-// Resultado de un cruce: relación, sin relación o no concluyente (con pocos casos).
-const veredicto=c=>c.chi2==null?["no","Sin datos"]:!c.confiable?["dud","No concluyente"]:c.p<.05?["si","Hay relación"]:["no","Sin relación"];
-
-// ---- Resumen ----
-function pResumen(s){const d=s.distT,K=[],H=[];
-if(s.nTitulados)K.push(kpi(s.nTitulados,"titulados encuestados",""),kpi(num(s.anios.mediana),"años de vida profesional (mediana)",`Media ${num(s.anios.media)} ± ${num(s.anios.sd)}`),kpi(`${num(s.pctInteres*100,0)} %`,"le interesa un posgrado",""),kpi(num(s.likertT.satisfaccion.media,1)+" <small>/ 4</small>","satisfacción con la formación",""));
-if(s.nEmpleadores)K.push(kpi(s.nEmpleadores,"empleadores encuestados",""),kpi(`${num(prevE(s),0)} %`,"prevé contratar Ingenieros de Sistemas",""));
-const h=(t,x)=>x?H.push(`<li><b>${t}</b>${x}</li>`):0;
-if(s.nTitulados){h("Trayectoria",lecAnios(s.anios,s.junior,s.consolidado));h("Situación laboral",lecDist(d.situacion));h("Valoración de la formación",lecLikert(Object.keys(LT).map(k=>({label:LT[k],l:s.likertT[k]})),"de acuerdo o totalmente de acuerdo"))}
-if(s.nEmpleadores)h("Demanda de profesionales",lecDist(s.distE.proyeccion)+" "+`El ${num(prevE(s),0)} % prevé contratar.`);
-const sig=Object.values(s.cruces||{}).filter(c=>veredicto(c)[0]==="si");
-if(s.nTitulados)h("Relaciones entre variables",sig.length?`Se encontró relación significativa en ${sig.length} de ${Object.keys(s.cruces).length} cruces: ${sig.map(c=>`«${esc(c.titulo)}»`).join("; ")}.`:`Ninguno de los ${Object.keys(s.cruces).length} cruces muestra una relación significativa con los datos actuales.`);
-const U=[...Object.values(s.distT||{}),...Object.values(s.distE||{})].filter(x=>x.unif);
-const R=U.filter(x=>x.unif.confiable);
-if(U.length)h("Uniformidad",R.length?`${R.filter(x=>x.unif.uniforme).length} de ${R.length} preguntas con respuestas suficientes reparten sus respuestas de forma uniforme; en las demás hay opciones que predominan.`+(U.length>R.length?` Otras ${U.length-R.length} tienen muy pocas respuestas para concluir.`:"")+" Detalle en «Pruebas estadísticas».":"Todavía hay muy pocas respuestas por pregunta para evaluar la uniformidad.");
-return`<p class="lead">Cómo leer este panel: <b>1)</b> aquí, los resultados clave y las decisiones sugeridas; <b>2)</b> «Titulados» y «Empleadores» para el detalle; <b>3)</b> «Pruebas estadísticas» para saber si una diferencia es real o azar; <b>4)</b> «Simulación» para estimar si un programa abriría; <b>5)</b> «Muestra y calidad» para saber cuánto confiar en los números.</p><div class="grid kpis">${K.join("")}</div>`+decisiones(s)+tarjeta("Hallazgos principales","Lectura de los resultados; el detalle está en cada pestaña.",`<ul class="hallazgos">${H.join("")}</ul>`,"","ancho","Resume en palabras lo que muestran los gráficos, para citarlo en el informe sin interpretar cada gráfico por separado.")}
-
-// ---- Titulados ----
-function pTitulados(s){PA=PAT;const d=s.distT,a=s.anios,tot=s.junior+s.consolidado,it=Object.keys(LT).map(k=>({label:LT[k],l:s.likertT[k]}));
-const g1=`<div class="grid kpis">${kpi(num(a.media),"años de vida profesional (media)",`Desviación estándar ${num(a.sd)}`)}${kpi(num(a.mediana),"años (mediana)",`Mitad central: de ${num(a.q1)} a ${num(a.q3)}`)}${kpi(`${num(s.junior*100/tot,0)} %`,`son junior (hasta ${UMB.junior} años)`,`${s.junior} juniors · ${s.consolidado} consolidados`)}</div><div class="grid">`+
-tarjeta("Años de vida profesional",subN(s.aniosHist),hist(s.aniosHist),lecAnios(a,s.junior,s.consolidado),"","Segmenta a los titulados en junior (hasta 3 años) y consolidados: los junior piden especializaciones iniciales y los consolidados, gestión y maestrías.")+bc(d.edad,"edad",TT.edad)+bc(d.genero,"genero",TT.genero)+"</div>";
-const g1b=`<div class="grid">`+tarjeta("Medidas descriptivas","Años de vida profesional de los titulados (n = "+a.n+").",tablaDesc(a),"","ancho","Resume la trayectoria con números comparables y revisables en Excel: dice si el promedio representa bien al grupo (variabilidad), si hay casos extremos y hacia dónde se inclina la distribución.")+
-tarjeta("Diagrama de caja","Muestra de un vistazo la mitad central de los titulados, la mediana, la media y los casos extremos.",caja(a),"","","Detecta valores atípicos y compara la media con la mediana: si el rombo (media) se aleja de la raya (mediana), hay casos extremos que la mueven.")+
-tarjeta("Ojiva (frecuencia acumulada)",subN(s.aniosHist),ojiva(s),"","","Responde «¿qué porcentaje lleva X años o menos?»; permite leer el tamaño del segmento junior y fijar el punto de corte de la oferta de posgrado.")+
-tarjeta("Tabla de frecuencias",subN(s.aniosHist),tablaFrec(s),"","ancho","Es el respaldo numérico del histograma y la ojiva, con las frecuencias absoluta, relativa y acumuladas que exige el informe.")+"</div>";
-const g2=`<div class="grid">`+bc(d.situacion,"situacion",TT.situacion)+bc(d.tiempoPrimerTrabajo,"tiempoPrimerTrabajo",TT.tiempoPrimerTrabajo)+["sector","rubro","departamento","remuneracion"].map(k=>bc(d[k],k,TT[k],SUBT[k])).join("")+"</div>";
-const g3=`<div class="grid kpis">${kpi(`${num(s.pctInteres*100,0)} %`,"le interesa un posgrado","En áreas de Ingeniería en Sistemas")}</div><div class="grid">`+["area","orgPosgrado","nivelPosgrado","financiamiento"].map(k=>bc(d[k],k,TT[k],SUBT[k])).join("")+"</div>";
-const g4=`<div class="grid">`+tarjeta("Brechas de formación","Cada afirmación según el porcentaje de titulados que está de acuerdo (niveles 3 y 4 de 4).",brecha(it),"","ancho","Señala qué aspectos de la formación están débiles según quienes ya trabajan: son la evidencia empírica que piden los pares evaluadores para actualizar la malla.")+
-tarjeta("Grado de acuerdo con cada afirmación","De 1 (totalmente en desacuerdo) a 4 (totalmente de acuerdo). A la derecha, media ± desviación estándar.",likert(it,NIV4,COL4,CL4),lecLikert(it,"de acuerdo o totalmente de acuerdo"),"ancho","Muestra cómo se reparten las respuestas en cada nivel, no solo el promedio: dos afirmaciones con igual media pueden tener opiniones muy divididas.")+
-bc(d.utiles,"utiles","Aspectos de la Carrera que resultaron útiles","",true)+bc(d.mejorar,"mejorar","Aspectos que pueden mejorarse","",true)+bc(d.ventaja,"ventaja","Asignaturas que dieron ventaja competitiva","Cada persona eligió 5. ",true)+bc(d.pocoUtiles,"pocoUtiles","Asignaturas de poca utilidad","Cada persona eligió 5. ",true)+`</div>`+(contraste(s)?`<div class="grid">${contraste(s)}</div>`:"");
-return panel("Titulados","Perfil, situación laboral, formación continua y valoración de la formación recibida.",expandir+grupo("Perfil y madurez profesional",3,g1,true)+grupo("Estadística descriptiva de los años de vida profesional",4,g1b)+grupo("Inserción laboral",6,g2)+grupo("Formación continua",4,g3)+grupo("Valoración de la formación",contraste(s)?7:6,g4))}
-
-// ---- Empleadores ----
-function pEmpleadores(s){PA=PAE;const d=s.distE,L=s.likertE,P=Object.keys(FPL).map(k=>({label:FPL[k],l:L[k]})),V=Object.keys(VCL).map(k=>({label:VCL[k],l:L[k]}));
-const ns=Object.values(L).reduce((a,l)=>a+l.noSabe,0),tot=Object.values(L).reduce((a,l)=>a+l.n+l.noSabe,0);
-const g1=`<div class="grid">`+["tipo","tamano","rubro"].map(k=>bc(d[k],k,TE[k])).join("")+"</div>";
-const g2=`<div class="grid kpis">${kpi(`${num(prevE(s),0)} %`,"prevé contratar Ingenieros de Sistemas","Con alta probabilidad o según su crecimiento")}</div><div class="grid">`+["proyeccion","nivelFormacion","medio"].map(k=>bc(d[k],k,TE[k])).join("")+bc(d.cargos,"cargos","Cargos que ocupan los titulados","",true,"ancho")+"</div>";
-const nota="Escala de 1 a 3. Las respuestas «No sabe» no entran en la media ni en las barras.";
-const g3=`<div class="grid">`+tarjeta("Formación y perfil profesional",nota,likert(P,NIV3,COL3,CL3),lecLikert(P,"de acuerdo total o parcial"),"ancho","Mide cómo juzgan los empleadores el desempeño de los titulados: es evidencia externa del perfil de egreso para la acreditación.")+tarjeta("Relación de la Carrera con la organización",nota,likert(V,NIV3,COL3,CL3),lecLikert(V,"de acuerdo total o parcial"),"ancho","Mide el vínculo entre la Carrera y el sector productivo: sustenta las alianzas empresariales y el observatorio permanente.")+`</div><p class="nota-t">«No sabe»: ${ns} de ${tot} respuestas (${tot?num(ns*100/tot,0):0} %). Las preguntas abiertas (áreas emergentes, herramientas y competencias) se revisan en el CSV limpio de empleadores.</p>`;
-return panel("Empleadores","Perfil de las organizaciones, demanda de profesionales y valoración de la Carrera.",expandir+grupo("Perfil de las organizaciones",3,g1,true)+grupo("Demanda de profesionales",4,g2)+grupo("Valoración de la Carrera",2,g3))}
-
-// ---- Pruebas estadísticas: relaciones (independencia) y uniformidad ----
-function ejemplo(d,tit){const u=d.unif,fo=d.filas.map(f=>f.n),fe=u.fe,t=fo.length<=6?`[${fo.map(x=>`(${x} − ${num(fe,2)})²`).join(" + ")}] / ${num(fe,2)}`:"Σ (FO − FE)² / FE";
-return`<b>Ejemplo con «${esc(tit)}».</b> n = ${u.n} respuestas y k = ${u.k} categorías, entonces FE = n / k = ${u.n} / ${u.k} = ${num(fe,2)}. Estadístico: χ² = ${t} = <b>${num(u.chi2,2)}</b>. Valor teórico (α = 0,05 y ${u.gl} grados de libertad) = <b>${num(u.critico,2)}</b>. Como ${u.chi2<u.critico?`${num(u.chi2,2)} &lt; ${num(u.critico,2)}, hay <b>uniformidad</b>`:`${num(u.chi2,2)} ≥ ${num(u.critico,2)}, hay <b>no uniformidad</b>`}.`}
-function pPruebas(s){const cr=Object.values(s.cruces||{}),q=`datos=${fuente}&sep=${encodeURIComponent(sep)}`;
-const resCr=cr.length?`<table class="res"><tr><th>Cruce</th><th>n</th><th>χ²</th><th>Grados de libertad</th><th>p</th><th>V</th><th>Resultado</th></tr>`+cr.map(c=>{const[v,t]=veredicto(c);return`<tr><td>${esc(c.titulo)}</td><td>${c.n}</td><td>${c.chi2!=null?num(c.chi2,2):"–"}</td><td>${c.gl!=null?c.gl:"–"}</td><td>${c.p!=null?num(c.p,4):"–"}</td><td>${c.cramerV!=null?num(c.cramerV,2):"–"}</td><td><span class="ins ${v}">${t}</span></td></tr>`}).join("")+`</table><p class="nota-t">α = 5 %. Grados de libertad = (filas − 1) × (columnas − 1). «No concluyente» significa que más del 20 % de las celdas tiene frecuencia esperada menor a 5, por lo que el valor de p no es confiable.</p>`:"";
-const PC={"fin-nivel":"Revela si el nivel de posgrado cursado depende de cómo se paga: si quienes pagan solos eligen programas más cortos, las becas podrían ampliar la demanda de maestrías.","area-sector":"Revela si el sector donde trabajan (público o privado) condiciona el área de posgrado elegida: permite dirigir cada programa al público que lo pide.","seg-area":"Revela si junior y consolidados quieren áreas distintas: permite diseñar programas por etapa de trayectoria.","int-sit":"Revela si el interés en un posgrado cambia según la situación laboral: dice a quién dirigir la promoción de los programas.","area-fin":"Revela si cada área de posgrado tiene un perfil de financiamiento propio: orienta qué programas necesitan becas o convenios."};
-const cards=cr.map(c=>{const est=c.chi2!=null?`<div class="estad"><span>χ² = <b>${num(c.chi2,2)}</b></span><span>Grados de libertad = <b>${c.gl}</b></span><span><b>${pTxt(c.p)}</b></span><span>V de Cramér = <b>${num(c.cramerV,2)}</b></span><span>Celdas con esperada &lt; 5: <b>${num(c.pctEsperadosBajos,0)} %</b></span></div>`:"";
-const caut=c.chi2!=null&&!c.confiable?`<p class="cautela"><b>Cautela.</b> ${esc(c.aviso)}</p>`:"";
-return tarjeta(esc(c.titulo),`n = ${c.n} ${c.n==1?"respuesta":"respuestas"} con ambas preguntas contestadas`,heat(c)+est+caut,c.chi2!=null?lecCruce(c):"","ancho",(PC[c.id]||"Prueba si dos respuestas están relacionadas.")+" Solo se actúa sobre relaciones marcadas como «Hay relación»; «No concluyente» pide más respuestas.").replace("</article>",`<div class="acciones dl"><a href="/api/export/cruce/${esc(c.id)}.csv?${q}" download="cruce_${esc(c.id)}.csv">Exportar matriz (CSV)</a></div></article>`)}).join("");
-const filasU=(map,tits,etq)=>{const r=Object.keys(tits).filter(k=>map&&map[k]&&map[k].unif).map(k=>{const u=map[k].unif;return`<tr><td>${esc(tits[k])}</td><td>${u.n}</td><td>${u.k}</td><td class="fe${u.confiable?"":" bajo"}"${u.confiable?"":' title="Con menos de 5 respuestas esperadas por categoría la prueba no es fiable"'}>${num(u.fe,1)}</td><td>${num(u.chi2,2)}</td><td>${u.gl}</td><td>${num(u.critico,2)}</td><td class="rs"><span class="ins ${u.uniforme?"si":"no"}">${u.uniforme?"Uniformidad":"No uniformidad"}</span></td></tr>`});return r.length?`<tr class="grp"><td colspan="8">${etq}</td></tr>`+r.join(""):""};
-const tablaU=filasU(s.distT,TT,"Titulados")+filasU(s.distE,TE,"Empleadores");
-const ej=(()=>{let alt="";for(const[m,t]of[[s.distT,TT],[s.distE,TE]])for(const k of Object.keys(t))if(m&&m[k]&&m[k].unif){if(m[k].unif.confiable)return ejemplo(m[k],t[k]);alt=alt||ejemplo(m[k],t[k])}return alt})();
-const unif=tablaU?`<div class="card ancho"><h3>Resultados por pregunta</h3><p class="sub">H₀: todas las opciones son igualmente probables. Nivel de significancia α = 5 %.</p><div class="scroll"><table class="res"><tr><th>Pregunta</th><th>n</th><th>k</th><th>FE = n/k</th><th>χ²</th><th>Grados de libertad</th><th>χ² crítico</th><th>Resultado</th></tr>${tablaU}</table></div>
-<p class="nota-t">k es el número de opciones que ofrece la pregunta (incluidas las que nadie eligió). El asterisco (*) junto a la FE indica FE &lt; 5: en ese caso la prueba no es fiable.</p>
-<details class="desc"><summary>Cómo se calcula</summary><div class="formulas"><div><small>Estadístico</small>χ² = Σ (FOᵢ − FEᵢ)² / FEᵢ</div><div><small>Frecuencia esperada</small>FE = n / k</div><div><small>Grados de libertad</small>gl = k − 1</div></div>
-<ol class="pasos"><li>Contar las respuestas (n) y las categorías (k).</li><li>Calcular la frecuencia esperada: FE = n / k.</li><li>Contar la frecuencia observada (FO) de cada categoría.</li><li>Calcular el estadístico χ² = Σ (FO − FE)² / FE.</li><li>Buscar el valor teórico de la tabla χ² para α = 5 % y k − 1 grados de libertad.</li><li>Conclusión: si χ² &lt; valor teórico, hay <b>uniformidad</b>; si no, <b>no uniformidad</b>.</li></ol>${ej?`<p>${ej}</p>`:""}</details>
-<div class="acciones dl"><a href="/api/export/uniformidad.csv?${q}" download="uniformidad.csv">Exportar resultados (CSV)</a></div></div>`:'<p class="vacio">Todavía no hay respuestas para calcular la uniformidad.</p>';
-return panel("Pruebas estadísticas","",
-`<div class="sec"><h2>Uniformidad de las respuestas</h2><p class="lead">Prueba χ² de bondad de ajuste: verifica si las respuestas de cada pregunta se reparten por igual entre sus opciones.</p><div class="grid one">${unif}</div></div>`+
-(cr.length?`<div class="sec"><h2>Relaciones entre variables</h2><p class="lead">Prueba χ² de independencia: cuenta cuántas personas caen en cada combinación de dos respuestas y prueba si las preguntas están relacionadas.</p><div class="card ancho" style="margin-bottom:16px"><h3>Resumen de los cruces</h3><p class="sub">Detalle de cada tabla más abajo.</p><div class="scroll">${resCr}</div></div><div class="grid">${cards}</div></div>`:""))}
-
-// ---- Muestra y calidad: cuánto confiar en los números ----
-function pDatos(s){const m=s.muestra,q=s.calidad,qs=`datos=${fuente}&sep=${encodeURIComponent(sep)}`;
-const kp=`<div class="grid kpis">${kpi(s.nTitulados,"titulados encuestados",s.nTitulados?`Margen de error referencial ± ${num(m.margenTitulados)} puntos`:"")}${kpi(s.nEmpleadores,"empleadores encuestados",s.nEmpleadores?`Margen de error referencial ± ${num(m.margenEmpleadores)} puntos`:"")}${kpi(m.empresas,"empresas individualizadas",`Públicas: ${m.empresasPublicas} · Privadas: ${m.empresasPrivadas}`)}${kpi(num(q.completitud,1)+" %","datos completos","Campos obligatorios con respuesta")}</div>`;
-const ok=(c,t)=>c?chip("ok",t||"Cumple"):chip("mal",t?"No cumple":"No cumple");
-const req=[["Al menos 3 empresas individualizadas",m.empresas,m.empresas>=3],["Al menos 1 empresa pública",m.empresasPublicas,m.empresasPublicas>=1],["Al menos 1 empresa privada",m.empresasPrivadas,m.empresasPrivadas>=1],[`Al menos ${UMB.nMin} titulados encuestados`,s.nTitulados,s.nTitulados>=UMB.nMin],[`Margen de error de titulados de ${UMB.margenMax} puntos o menos`,`± ${num(m.margenTitulados)}`,s.nTitulados>0&&m.margenTitulados<=UMB.margenMax],["Hay empleadores encuestados",s.nEmpleadores,s.nEmpleadores>0]];
-const reqT=`<div class="scroll"><table class="res txt"><tr><th>Requisito de la actividad</th><th>Valor</th><th>Estado</th></tr>${req.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${ok(r[2])}</td></tr>`).join("")}</table></div><p class="nota-t">Los tres primeros requisitos vienen de la guía; los demás son criterios de trabajo (constante UMB). El margen de error supone muestra aleatoria simple: si la muestra fue por conveniencia (quienes aceptaron responder), es solo referencial y debe declararse esa limitación.</p>`;
-const val=[["Respuestas duplicadas",q.duplicadosTitulados+q.duplicadosEmpleadores,"0","Se repiten todas las respuestas de otra persona; pueden ser envíos dobles.",1],
-["Campos obligatorios vacíos",q.camposObligatoriosVacios,"0","El servidor rechaza respuestas incompletas; un valor distinto de 0 indicaría datos cargados por otra vía.",1],
-["Valores fuera de rango",q.fueraDeRango,"0","Años fuera de 0 a 60 o escalas Likert fuera de su rango.",1],
-["Años negativos",q.aniosNegativos,"0","Un tiempo no puede ser negativo.",1],
-["Incoherencias (desempleo mayor que vida profesional)",q.incoherentes,"0","Alguien no puede haber estado desempleado más años de los que lleva ejerciendo.",1],
-["Valores atípicos en años de vida profesional",q.atipicos,"Informativo","Regla de Tukey. Un atípico no es un error: se revisa que sea real y se reporta.",0],
-["Variantes de escritura unificadas",q.categoriasUnificadas,"Informativo","Mayúsculas, tildes y espacios distintos que se agruparon en una sola categoría.",0],
-["Respuestas «Otro» especificadas",q.otrasEspecificadas,"Informativo","Texto libre que se agrupa como «Otro (…)» para no perder información.",0]];
-const valT=`<div class="scroll"><table class="res txt"><tr><th>Verificación</th><th>Resultado</th><th>Esperado</th><th>Estado</th><th>Qué significa</th></tr>${val.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td><td>${r[4]?ok(r[1]===0):chip("at","Informativo")}</td><td>${r[3]}</td></tr>`).join("")}</table></div>`;
-const grpE=(tit,cls,lista)=>lista.length?`<div class="grupo-emp"><h4>${tit} <span>${lista.length}</span></h4><div class="chips">${lista.map(e=>`<span class="chip ${cls}" title="${esc(e.nombre)}">${esc(e.nombre)}</span>`).join("")}</div></div>`:"";
-const esPub=e=>/^p[uú]blic/i.test(e.tipo),esPri=e=>/^privad/i.test(e.tipo),porNombre=(a,b)=>a.nombre.localeCompare(b.nombre,"es");
-const emp=m.listaEmpresas.length?grpE("Públicas","pub",m.listaEmpresas.filter(esPub).sort(porNombre))+grpE("Privadas","pri",m.listaEmpresas.filter(esPri).sort(porNombre))+grpE("Sin clasificar","",m.listaEmpresas.filter(e=>!esPub(e)&&!esPri(e)).sort(porNombre)):"";
-const met=`<div class="formulas"><div><small>Media</small>x̄ = Σxᵢ / n</div><div><small>Varianza muestral</small>s² = Σ(xᵢ − x̄)² / (n − 1)</div><div><small>Coef. de variación</small>CV = s / x̄ × 100</div><div><small>Cuartiles y percentiles</small>Método R-7 (igual que CUARTIL.INC y PERCENTIL.INC de Excel)</div><div><small>Atípicos (Tukey)</small>fuera de [Q1 − 1,5·RIC ; Q3 + 1,5·RIC]</div><div><small>Asimetría</small>Coeficiente de Fisher ajustado (igual que COEF.ASIMETRIA)</div><div><small>χ² de independencia</small>Σ(O − E)² / E, gl = (f − 1)(c − 1); confiable si menos del 20 % de celdas tiene E &lt; 5</div><div><small>V de Cramér</small>√(χ² / (n · min(f − 1, c − 1)))</div></div><p class="nota-t">Cada fórmula está verificada con pruebas automáticas (<code>mvn test</code>) cuyos resultados esperados se calcularon aparte con Python y se pueden reproducir en Excel. Las respuestas se guardan con la hora del servidor y cada correo responde una sola vez.</p>`;
-const dl=[["titulados.csv","Titulados (limpio)"],["empleadores.csv","Empleadores (limpio)"],["titulados_crudo.csv","Titulados (crudo)"],["empleadores_crudo.csv","Empleadores (crudo)"],["diccionario.csv","Diccionario de datos"],["uniformidad.csv","Pruebas de uniformidad"],["simulaciones.csv","Simulaciones guardadas"]].map(([f,t])=>`<a href="/api/export/${f}?${qs}" download="${f}">${t}</a>`).join("");
-return panel("Muestra y calidad","Cuánta evidencia hay, si los datos son válidos y cómo se calculó cada medida.",kp+`<div class="grid">`+
-tarjeta("Requisitos de la actividad","Comprobación automática de lo que pide la guía y de los criterios de confiabilidad.",reqT,"","ancho","Dice si la muestra alcanza para sostener el informe y qué falta reunir antes de entregarlo.")+
-tarjeta("Validación de los datos","Verificaciones hechas sobre las respuestas actuales.",valT,"","ancho","Demuestra que los datos son válidos antes de analizarlos: es la evidencia de calidad que acompaña a los resultados.")+
-tarjeta("Empresas individualizadas","Salen de las encuestas de empleadores y de la empresa donde trabaja cada titulado.",emp||'<p class="vacio">Todavía no hay empresas registradas.</p>',"","ancho","Respalda que la toma de datos se hizo en campo con empresas públicas y privadas concretas.")+
-tarjeta("Cómo se calcula cada medida","Fórmulas y su equivalente en Excel.",met,"","ancho","Permite a un evaluador repetir los cálculos y comprobar que coinciden.")+
-tarjeta("Descargas","Los archivos «limpios» están listos para analizar; los «crudos» conservan lo que respondió cada persona.",`<div class="dl dl-grid">${dl}</div><p class="nota-t">El CSV de titulados incluye correo y teléfono: no lo publique ni lo comparta.</p>`,"","","Entrega los datos para repetir el análisis en Excel o en otro programa (trazabilidad).")+`</div>`)}
-
-// ============================================================
-// 5. CARGA, PESTAÑAS Y PINTADO
-// ============================================================
-// mostrar(): muestra el panel de la pestaña elegida y marca la pestaña (queda en la URL: #pruebas, #datos...).
-function mostrar(id){const ps=[...document.querySelectorAll(".panel")];if(!ps.some(p=>p.id==="p-"+id))id=ps.length?ps[0].id.slice(2):"";
-ps.forEach(p=>p.hidden=p.id!=="p-"+id);document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.t===id));
-tab=id;try{history.replaceState(null,"","#"+id)}catch{}}
-// pintar(): arma los paneles con las estadísticas recibidas.
-function pintar(s){const P=[],hay=s.nTitulados||s.nEmpleadores;
-if(!hay)P.push({id:"resumen",l:"Resumen",h:`<div class="vacio-grande"><b>Aún no hay respuestas ${fuente=="reales"?"reales":""}</b>Comparta la <a href="index.html">encuesta</a> o cargue los datos de demostración para ver cómo funciona el panel.</div>`});
-else{P.push({id:"resumen",l:"Resumen",h:pResumen(s)});if(s.nTitulados)P.push({id:"titulados",l:"Titulados",h:pTitulados(s)});if(s.nEmpleadores)P.push({id:"empleadores",l:"Empleadores",h:pEmpleadores(s)});P.push({id:"pruebas",l:"Pruebas estadísticas",h:pPruebas(s)})}
-P.push({id:"simulacion",l:"Simulación"});if(hay)P.push({id:"datos",l:"Muestra y calidad",h:pDatos(s)});
-$("app").innerHTML=P.filter(x=>x.h).map(x=>`<section class="panel" id="p-${x.id}" hidden>${x.h}</section>`).join("");
-$("tabs").innerHTML=P.map(x=>`<button type="button" role="tab" data-t="${x.id}" aria-selected="false">${x.l}</button>`).join("");
-mostrar(tab)}
-
-// controles(): botones de origen de datos, avisos y valor de interés para el simulador.
-function controles(s){document.querySelectorAll("[data-f]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f==fuente));
-const a=$("aviso");a.hidden=fuente=="reales";a.textContent=fuente=="demo"?"Está viendo datos de demostración (ficticios). No los use como datos de campo.":fuente=="todos"?"Está viendo datos reales mezclados con datos de demostración (ficticios). Para el análisis final use «Datos reales».":"";
-if(s.nTitulados&&!piEditado){$("pi").value=Math.max(0.01,s.pctInteres);$("piHint").textContent=`Valor de la encuesta: ${num(s.pctInteres*100,0)} %`}}
-
-// cargar(): pide las estadísticas a /api/stats. Si no hay datos reales pero sí de demostración, abre la demostración.
-async function cargar(inicial){let s;try{const r=await fetch("/api/stats?datos="+fuente);if(!r.ok)throw 0;s=await r.json()}catch{$("app").innerHTML='<div class="vacio-grande"><b>No se pudieron cargar los datos</b>Revise que el servidor esté activo y recargue la página.</div>';return}
-if(inicial&&fuente=="reales"&&!s.nTitulados&&!s.nEmpleadores&&s.disponibles.demo>0){fuente="demo";return cargar(false)}
-ultimo=s;pintar(s);controles(s)}
-document.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{fuente=b.dataset.f;cargar(false).then(resim)});
-$("tabs").addEventListener("click",e=>{const b=e.target.closest("button[data-t]");if(b)mostrar(b.dataset.t)});
-document.addEventListener("click",e=>{const x=e.target.closest("[data-exp]");if(x){e.preventDefault();x.closest(".panel").querySelectorAll("details.grupo").forEach(d=>d.open=x.dataset.exp==="1")}});
-$("demo").onclick=async()=>{await fetch("/api/seed",{method:"POST"});fuente="demo";cargar(false).then(resim)};
-$("borrar").onclick=async()=>{await fetch("/api/reset",{method:"DELETE"});fuente="reales";cargar(false).then(resim)};
-
-// ============================================================
-// 6. SIMULACIÓN MONTE CARLO
-// ============================================================
-// call(): envía parámetros a /api/simulacion y devuelve el resultado.
-async function call(b){return(await fetch("/api/simulacion?datos="+fuente,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json()}
-// distSvg(): superpone las dos distribuciones de inscritos y marca el mínimo para abrir.
-function distSvg(a,c,min){const W=640,H=230,m={l:44,r:14,t:14,b:34},pts=a.dist.concat(c.dist),x0=Math.min(...pts.map(p=>p[0]),min),x1=Math.max(...pts.map(p=>p[0]),min),y1=Math.max(...pts.map(p=>p[1]),1)*1.1;
-const X=v=>m.l+(v-x0)/Math.max(1,x1-x0)*(W-m.l-m.r),Y=v=>H-m.b-v/y1*(H-m.t-m.b);
-const area=(d,col)=>`<polygon points="${X(d[0][0])},${Y(0)} ${d.map(p=>`${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")} ${X(d[d.length-1][0])},${Y(0)}" fill="${col}" fill-opacity=".28" stroke="${col}" stroke-width="2"/>`;
-let s=`<svg class="dist" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distribución de inscritos en cada escenario">`;
-const paso=Math.max(1,Math.round((x1-x0)/6/5)*5);for(let v=Math.ceil(x0/paso)*paso;v<=x1;v+=paso)s+=`<line x1="${X(v)}" x2="${X(v)}" y1="${Y(0)}" y2="${Y(0)+4}" stroke="#9aa6b5"/><text x="${X(v)}" y="${H-16}" text-anchor="middle">${v}</text>`;
-s+=`<line x1="${m.l}" x2="${W-m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="#9aa6b5"/>`+area(a.dist,"#b45309")+area(c.dist,"#0f766e")+
-`<line x1="${X(min)}" x2="${X(min)}" y1="${m.t}" y2="${Y(0)}" stroke="#14202e" stroke-dasharray="5 4" stroke-width="2"/><text x="${X(min)+6}" y="${m.t+10}" style="fill:#14202e;font-weight:600">Mínimo para abrir: ${min}</text>`+
-`<text x="${W/2}" y="${H-1}" text-anchor="middle">Inscritos en el programa</text><text transform="translate(12 ${H/2}) rotate(-90)" text-anchor="middle">% de simulaciones</text></svg>`;
-return s+`<div class="leyenda"><span><i style="background:#b45309"></i>Escenario base</span><span><i style="background:#0f766e"></i>Con becas</span></div>`}
-async function simular(g){try{await simular2(g)}catch{$("simres").innerHTML='<p class="aviso">No se pudo calcular la simulación. Revise que el servidor esté activo e inténtelo de nuevo.</p>'}}
-async function simular2(g){const corrida="c"+Date.now().toString(36),b={poblacion:+$("pob").value,probInteres:+$("pi").value,probInscribe:+$("pr").value,minimo:+$("mn").value,iteraciones:5000,guardar:g?1:0,corrida},bono=+$("bono").value;
-const a=await call({...b,escenario:"base"}),c=await call({...b,escenario:"becas",probInscribe:Math.min(1,b.probInscribe+bono)});
-const card=(t,x,cls)=>`<div class="k ${cls}"><span>${t}</span><b>${num(x.probApertura*100,0)} %</b><em>probabilidad de abrir · ${num(x.media,0)} inscritos en promedio (rango del 90 %: ${num(x.p5,0)} a ${num(x.p95,0)})</em></div>`;
-const origen=a.origenInteres==="datos"?`Interés tomado de las respuestas (${a.nTitulados} titulados, origen: ${({reales:"datos reales",demo:"demostración",todos:"reales y demostración"})[a.datos]||a.datos}).`:"Interés escrito a mano.";
-const porArea=(!a.porArea||!a.porArea.length)?"":tarjeta("Cada área de posgrado","Participación de cada área entre los titulados interesados y probabilidad de que ese programa alcance el mínimo de inscritos.",`<div class="scroll"><table class="res"><tr><th>Área</th><th>Participación</th><th>Inscritos (base)</th><th>Abre (base)</th><th>Inscritos (becas)</th><th>Abre (becas)</th></tr>${a.porArea.map((x,i)=>{const y=(c.porArea||[])[i]||x;return`<tr><td>${esc(x.area)}</td><td>${num(x.participacion*100,0)} %</td><td>${num(x.media,0)}</td><td>${num(x.probApertura*100,0)} %</td><td>${num(y.media,0)}</td><td>${num(y.probApertura*100,0)} %</td></tr>`}).join("")}</table></div>`,"Un área con poca participación rara vez reúne el mínimo por sí sola: conviene ofrecer pocos programas o módulos comunes.","ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"');
-$("simres").innerHTML=`<p class="sub">${origen}${a.guardada?" Corrida guardada en la base de datos.":""}</p><div class="esc2">${card("Escenario base",a,"falta")}${card("Con becas",c,"ok")}</div>`+
-tarjeta("Distribución de inscritos en 5 000 simulaciones","La parte de cada curva a la derecha de la línea punteada es la probabilidad de abrir.",distSvg(a,c,b.minimo),
-`Con becas, la probabilidad de alcanzar los ${b.minimo} inscritos pasa de ${num(a.probApertura*100,0)} % a ${num(c.probApertura*100,0)} %. Cerca de 100 % significa que el programa abriría casi siempre; cerca de 0 %, casi nunca.`,"ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"')+porArea;
-if(g)historial()}
-// resim(): recalcula (sin guardar) y recarga el historial cuando cambia el origen de datos.
-function resim(){simular(false);historial()}
-// historial(): últimas corridas guardadas del origen de datos actual y enlace para descargarlas.
-async function historial(){const h=$("hist");try{const r=await fetch("/api/simulaciones?datos="+fuente);if(!r.ok)throw 0;const l=(await r.json()).filter(x=>!x.area);
-h.innerHTML=l.length?tarjeta("Simulaciones guardadas","Las últimas corridas de este origen de datos (programa en general).",`<div class="scroll"><table class="res"><tr><th>Fecha</th><th>Escenario</th><th>Titulados usados</th><th>Interés</th><th>Inscripción</th><th>Mínimo</th><th>Abre</th></tr>${l.slice(0,10).map(x=>`<tr><td>${esc(String(x.fecha).slice(0,16).replace("T"," "))}</td><td>${esc(x.escenario)}</td><td>${x.nTitulados}</td><td>${num(x.probInteres*100,0)} %</td><td>${num(x.probInscribe*100,0)} %</td><td>${x.minimo}</td><td>${num(x.probApertura*100,0)} %</td></tr>`).join("")}</table></div><p class="nota-t"><a href="/api/export/simulaciones.csv?datos=${fuente}&sep=${encodeURIComponent(sep)}">Descargar todas las simulaciones (CSV)</a></p>`,"","ancho").replace('class="card ancho"','class="card ancho" style="margin-top:16px"'):""}catch{h.innerHTML=""}}
-$("sim").onsubmit=e=>{e.preventDefault();simular(true)};
-$("pi").addEventListener("input",()=>piEditado=true);
-cargar(true).then(resim);
-</script></body></html>
+<!-- Diálogos de la administración de respuestas: ficha, edición, confirmación de borrado y clave -->
+<dialog id="dlg" class="dlg" aria-labelledby="dlg-titulo"></dialog>
+<dialog id="dlg-clave" class="dlg dlg-chico" aria-labelledby="dlg-clave-titulo"></dialog>
+<script type="module" src="js/panel/main.js"></script>
+</body>
+</html>
