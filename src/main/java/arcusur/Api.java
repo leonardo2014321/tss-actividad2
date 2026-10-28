@@ -9,6 +9,7 @@ import java.util.stream.*;
 import org.apache.commons.math3.distribution.BinomialDistribution;
 import org.apache.commons.math3.random.JDKRandomGenerator;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
  * API REST de la aplicación. Todas las rutas empiezan con /api.
  *
  *  - POST /api/titulados y /api/empleadores : guardan una respuesta de encuesta.
+ *  - GET/PUT/DELETE /api/titulados/{id} y /api/empleadores/{id} (y GET de la lista): consulta, edición y borrado
+ *    de las respuestas guardadas. Si se define ADMIN_CLAVE, exigen el encabezado X-Admin-Clave.
  *  - GET  /api/stats?datos=reales|demo|todos : estadísticas para el panel de análisis.
  *  - POST /api/simulacion                    : simulación Monte Carlo de inscritos a un posgrado.
  *  - GET  /api/export/...                    : CSV limpio, crudo, diccionario y matrices de cruce.
@@ -33,11 +36,15 @@ public class Api {
   private final EmpleadorRepo er;
   private final SimulacionRepo sr;
 
-  /** Spring inyecta los repositorios automáticamente. */
-  public Api(TituladoRepo tr, EmpleadorRepo er, SimulacionRepo sr) {
+  /** Clave de administración (variable ADMIN_CLAVE). Vacía = sin protección, pensado para uso local. */
+  private final String claveAdmin;
+
+  /** Spring inyecta los repositorios y la clave de administración automáticamente. */
+  public Api(TituladoRepo tr, EmpleadorRepo er, SimulacionRepo sr, @Value("${admin.clave:}") String claveAdmin) {
     this.tr = tr;
     this.er = er;
     this.sr = sr;
+    this.claveAdmin = claveAdmin == null ? "" : claveAdmin;
   }
 
   // =====================================================================
@@ -52,6 +59,7 @@ public class Api {
     t.email = t.email.trim().toLowerCase(Locale.ROOT);
     String repetido = "Este correo ya respondió la encuesta de titulados.";
     if (tr.existsByEmailIgnoreCase(t.email)) throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    coherente(t);
     try {
       return tr.save(t);
     } catch (DataIntegrityViolationException x) { // dos envíos simultáneos con el mismo correo
@@ -72,6 +80,134 @@ public class Api {
     } catch (DataIntegrityViolationException x) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
     }
+  }
+
+  // =====================================================================
+  // 1b. ADMINISTRACIÓN DE LAS RESPUESTAS GUARDADAS (consultar, editar, eliminar)
+  // =====================================================================
+
+  private static final String CLAVE = "X-Admin-Clave";
+
+  /** Rechaza la solicitud si hay una clave de administración configurada y no coincide con la enviada. */
+  private void autorizar(String clave) {
+    if (claveAdmin.isBlank()) return;
+    byte[] a = claveAdmin.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    byte[] b = (clave == null ? "" : clave).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    if (!java.security.MessageDigest.isEqual(a, b)) { // comparación de tiempo constante
+      throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Clave de administración incorrecta o ausente.");
+    }
+  }
+
+  private static ResponseStatusException noExiste() {
+    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Esa respuesta ya no existe: puede haberla eliminado otra persona.");
+  }
+
+  /** Regla de coherencia: no se puede haber estado desempleado más años que los de vida profesional. */
+  private static void coherente(Titulado t) {
+    if (t.aniosDesempleado > t.aniosProfesionales) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El tiempo desempleado no puede superar los años de vida profesional.");
+    }
+  }
+
+  // ---- Titulados ----
+
+  /** Lista las respuestas de titulados (la más reciente primero). datos: reales (defecto), demo o todos. */
+  @GetMapping("/titulados")
+  public List<Titulado> listarT(@RequestParam(defaultValue = "reales") String datos,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    return titulados(datos).stream().sorted(Comparator.comparing((Titulado t) -> t.id).reversed()).collect(Collectors.toList());
+  }
+
+  @GetMapping("/titulados/{id}")
+  public Titulado verT(@PathVariable Long id, @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    return tr.findById(id).orElseThrow(Api::noExiste);
+  }
+
+  /** Reemplaza las respuestas de un titulado. Conserva el id, la fecha de registro y si es de demostración. */
+  @PutMapping("/titulados/{id}")
+  public Titulado editarT(@PathVariable Long id, @Valid @RequestBody Titulado t,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    Titulado actual = tr.findById(id).orElseThrow(Api::noExiste);
+    t.email = t.email.trim().toLowerCase(Locale.ROOT);
+    String repetido = "Ese correo ya pertenece a otra respuesta de titulados.";
+    if (tr.existsByEmailIgnoreCaseAndIdNot(t.email, id)) throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    coherente(t);
+    t.id = actual.id;
+    t.demo = actual.demo;
+    t.registrado = actual.registrado;
+    try {
+      return tr.save(t);
+    } catch (DataIntegrityViolationException x) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    }
+  }
+
+  @DeleteMapping("/titulados/{id}")
+  public Map<String, Object> borrarT(@PathVariable Long id, @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    Titulado t = tr.findById(id).orElseThrow(Api::noExiste);
+    tr.delete(t);
+    return Map.of("eliminado", id, "email", t.email);
+  }
+
+  // ---- Empleadores ----
+
+  @GetMapping("/empleadores")
+  public List<Empleador> listarE(@RequestParam(defaultValue = "reales") String datos,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    return empleadores(datos).stream().sorted(Comparator.comparing((Empleador e) -> e.id).reversed()).collect(Collectors.toList());
+  }
+
+  @GetMapping("/empleadores/{id}")
+  public Empleador verE(@PathVariable Long id, @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    return er.findById(id).orElseThrow(Api::noExiste);
+  }
+
+  @PutMapping("/empleadores/{id}")
+  public Empleador editarE(@PathVariable Long id, @Valid @RequestBody Empleador e,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    Empleador actual = er.findById(id).orElseThrow(Api::noExiste);
+    e.email = e.email.trim().toLowerCase(Locale.ROOT);
+    String repetido = "Ese correo ya pertenece a otra respuesta de empleadores.";
+    if (er.existsByEmailIgnoreCaseAndIdNot(e.email, id)) throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    e.id = actual.id;
+    e.demo = actual.demo;
+    e.registrado = actual.registrado;
+    try {
+      return er.save(e);
+    } catch (DataIntegrityViolationException x) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
+    }
+  }
+
+  @DeleteMapping("/empleadores/{id}")
+  public Map<String, Object> borrarE(@PathVariable Long id, @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    Empleador e = er.findById(id).orElseThrow(Api::noExiste);
+    er.delete(e);
+    return Map.of("eliminado", id, "email", e.email);
+  }
+
+  // ---- Simulaciones guardadas ----
+
+  /**
+   * Elimina una corrida completa. Cada vez que se guarda una simulación se registran juntas las filas del escenario
+   * base y del escenario con becas (programa en general y una por área), todas con el mismo identificador {@code corrida}.
+   */
+  @DeleteMapping("/simulaciones")
+  public Map<String, Object> borrarCorrida(@RequestParam String corrida,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    List<Simulacion> filas = sr.findAll().stream().filter(s -> corrida.equals(s.corrida)).collect(Collectors.toList());
+    if (filas.isEmpty()) throw noExiste();
+    sr.deleteAll(filas);
+    return Map.of("eliminadas", filas.size());
   }
 
   // =====================================================================
@@ -478,11 +614,15 @@ public class Api {
     return o;
   }
 
-  /** Historial de simulaciones guardadas, de la más reciente a la más antigua (máximo 200 filas). */
+  /**
+   * Historial de simulaciones guardadas, de la más reciente a la más antigua (máximo 1000 filas).
+   * Cada guardado produce varias filas con la misma {@code corrida}: base y becas, y para cada una el programa en general
+   * (area vacía) más una fila por área.
+   */
   @GetMapping("/simulaciones")
   public List<Simulacion> historial(@RequestParam(defaultValue = "reales") String datos) {
     return sr.findAll().stream().filter(s -> acepta(datos, s.demo))
-        .sorted(Comparator.comparing((Simulacion s) -> s.fecha).reversed()).limit(200).collect(Collectors.toList());
+        .sorted(Comparator.comparing((Simulacion s) -> s.fecha).reversed()).limit(1000).collect(Collectors.toList());
   }
 
   // =====================================================================

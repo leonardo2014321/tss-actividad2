@@ -3,9 +3,9 @@ package arcusur;
 import java.util.Map;
 
 /**
- * Opciones de respuesta de cada pregunta cerrada, tal como las ofrece la encuesta (index.html).
+ * Opciones de respuesta de cada pregunta cerrada, tal como las ofrece la encuesta (js/encuesta/preguntas.js).
  * Sirven para que las tablas incluyan también las opciones que nadie eligió y para contar el número real
- * de categorías en la prueba de uniformidad. Si cambias las opciones en index.html, actualiza este archivo.
+ * de categorías en la prueba de uniformidad. Si cambias las opciones en js/encuesta/preguntas.js, actualiza este archivo.
  */
 final class Opciones {
 
