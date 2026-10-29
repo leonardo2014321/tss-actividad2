@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Encuesta de seguimiento · Ingeniería de Sistemas UMSS</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/encuesta.css">
+</head>
+<body>
+<header class="top">
+  <strong>Ingeniería de Sistemas · UMSS</strong>
+  <nav><a href="index.html">Encuestas</a><a href="dashboard.html">Panel de análisis</a><a href="dashboard.html#registros">Administrar respuestas</a></nav>
+</header>
+<main>
+  <!-- Pantalla 1: elegir qué encuesta responder -->
+  <section id="inicio" class="hoja">
+    <h1>Encuesta de seguimiento de la Carrera</h1>
+    <p>Los resultados alimentan el Plan de Desarrollo Estratégico (ARCUSUR) y se usan solo con fines académicos. El correo se pide únicamente para evitar respuestas duplicadas. Las preguntas se adaptan a sus respuestas.</p>
+    <div class="choose">
+      <button type="button" data-k="titulados">Titulados<span>Egresados de Ingeniería de Sistemas · unos 8 minutos</span></button>
+      <button type="button" data-k="empleadores">Empleadores<span>Empresas e instituciones que contratan profesionales · unos 8 minutos</span></button>
+    </div>
+  </section>
+
+  <!-- Pantalla 2: formulario por pasos; js/encuesta/formulario.js dibuja las preguntas dentro de #campos -->
+  <form id="f" class="hoja" hidden novalidate>
+    <div class="prog"><div id="bar"></div></div>
+    <p id="paso" class="paso"></p>
+    <div id="campos"></div>
+    <p id="err" role="alert"></p>
+    <div class="nav">
+      <button type="button" id="atras" class="btn">Atrás</button>
+      <button id="sig" class="btn btn-primario">Siguiente</button>
+    </div>
+  </form>
+
+  <!-- Pantalla 3: revisión. Muestra con qué nombre se guardará la respuesta y un resumen antes de enviarla -->
+  <section id="revision" class="hoja" hidden>
+    <p class="paso">Último paso · Revise y confirme</p>
+    <h1>Confirme su respuesta</h1>
+    <p>Su respuesta se guardará con el nombre que aparece abajo. Cada correo puede responder una sola vez.</p>
+    <div class="registro-nombre">
+      <small>Se guardará como</small>
+      <strong id="rev-nombre"></strong>
+      <span id="rev-detalle"></span>
+    </div>
+    <details class="rev-resp" open>
+      <summary>Sus respuestas</summary>
+      <dl id="rev-lista"></dl>
+    </details>
+    <p id="rev-err" role="alert"></p>
+    <div class="nav">
+      <button type="button" id="rev-atras" class="btn">Volver y corregir</button>
+      <button type="button" id="rev-ok" class="btn btn-primario">Confirmar y guardar</button>
+    </div>
+  </section>
+
+  <!-- Pantalla 4: confirmación de lo guardado -->
+  <section id="fin" class="hoja" hidden>
+    <h1>Respuesta registrada</h1>
+    <p>Gracias por participar. Su respuesta quedó guardada con estos datos:</p>
+    <dl class="ficha" id="fin-ficha"></dl>
+    <div class="fin-nav"><button type="button" id="otra" class="btn btn-primario">Responder otra encuesta</button></div>
+  </section>
+</main>
+<script type="module" src="js/encuesta/formulario.js"></script>
+</body>
+</html>

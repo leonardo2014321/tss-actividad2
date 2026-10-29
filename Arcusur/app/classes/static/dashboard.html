@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ARCUSUR · Evaluación de la Carrera de Ingeniería de Sistemas</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/panel.css">
+</head>
+<body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca">
+      <strong>ARCUSUR</strong>
+      <span>Ingeniería de Sistemas · UMSS<br>Plan de Desarrollo Estratégico</span>
+    </div>
+    <nav class="menu" id="menu" aria-label="Secciones del panel"></nav>
+    <div class="origen">
+      <label for="origen">Origen de los datos</label>
+      <select id="origen">
+        <option value="reales">Datos reales</option>
+        <option value="demo">Demostración</option>
+        <option value="todos">Reales y demostración</option>
+      </select>
+      <a href="index.html">Ir a las encuestas</a>
+    </div>
+  </aside>
+
+  <main class="contenido">
+    <header class="cabecera">
+      <h1 id="titulo">Resumen ejecutivo</h1>
+      <p id="detalle"></p>
+    </header>
+    <p class="aviso" id="aviso" role="status" hidden></p>
+
+    <!-- Las vistas de datos se generan en js/panel/vistas.js -->
+    <div id="app"></div>
+
+    <!-- Simulación: vive en el HTML para conservar los parámetros al cambiar de vista -->
+    <section class="vista" id="v-simulacion" hidden>
+      <div class="sim-layout">
+        <section class="bloque">
+          <header><h3>Parámetros</h3></header>
+          <div class="cuerpo">
+            <form class="sim" id="sim">
+              <label>Titulados potenciales<input id="pob" type="number" value="300" min="1"></label>
+              <label>Probabilidad de interés<input id="pi" type="number" step="0.01" min="0" max="1" value="0.6"><small id="piHint"></small></label>
+              <label>Probabilidad de inscripción (base)<input id="pr" type="number" step="0.01" min="0" max="1" value="0.3"></label>
+              <label>Aumento por becas (puntos)<input id="bono" type="number" step="0.01" min="0" max="1" value="0.1"></label>
+              <label>Mínimo de inscritos para abrir<input id="mn" type="number" value="60" min="1"></label>
+              <button class="btn btn-primario">Simular y guardar comparación</button>
+            </form>
+          </div>
+          <div class="nota">
+            <details class="supuestos">
+              <summary>Supuestos del modelo</summary>
+              <ul>
+                <li>Cada titulado potencial se inscribe con probabilidad q = interés × inscripción; los inscritos siguen una distribución Binomial(n, q).</li>
+                <li>Se simulan 5 000 repeticiones por escenario. La probabilidad de abrir es la proporción de repeticiones que alcanza el mínimo.</li>
+                <li>El interés sale de las respuestas del origen de datos elegido; cada área recibe su participación entre quienes eligieron un área.</li>
+                <li>En el escenario con becas, el aumento se suma a la probabilidad de inscripción.</li>
+                <li>Al guardar se registra una comparación: el escenario base y el escenario con becas (dos escenarios por guardado).</li>
+              </ul>
+            </details>
+          </div>
+        </section>
+        <div>
+          <div id="simres" aria-live="polite"></div>
+          <div id="hist"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Administración de respuestas (consultar, editar, eliminar): se dibuja en js/panel/registros.js -->
+    <section class="vista" id="v-registros" hidden>
+      <div id="registros"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Diálogos de la administración de respuestas: ficha, edición, confirmación de borrado y clave -->
+<dialog id="dlg" class="dlg" aria-labelledby="dlg-titulo"></dialog>
+<dialog id="dlg-clave" class="dlg dlg-chico" aria-labelledby="dlg-clave-titulo"></dialog>
+<script type="module" src="js/panel/main.js"></script>
+</body>
+</html>

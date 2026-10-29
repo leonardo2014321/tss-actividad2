@@ -7,6 +7,7 @@
 import { $, esc, num, corto, estado } from "./util.js";
 import { TT, TE, LT, FPL, VCL } from "./etiquetas.js";
 import { PASOS, OPC, NUM, L3, L4 } from "../encuesta/preguntas.js";
+import { mapearArchivo } from "./importar.js";
 
 // ---------------------------------------------------------------------------
 // Definición de los campos (a partir de las preguntas de la encuesta)
@@ -313,7 +314,11 @@ function pintarCascaron() {
   const k = E.k;
   const csv = k === "simulaciones" ? "simulaciones.csv" : `${k}_crudo.csv`;
   const herramientas =
-    (k === "simulaciones" ? "" : `<a class="btn btn-primario" href="index.html#${k}">Nueva respuesta</a>`) +
+    (k === "simulaciones"
+      ? ""
+      : `<a class="btn btn-primario" href="index.html#${k}">Nueva respuesta</a>` +
+        `<button type="button" class="btn" data-reg="importar" title="Cargar respuestas desde un Excel exportado de Microsoft Forms o Google Forms">Importar desde Excel</button>` +
+        `<input type="file" id="reg-archivo" accept=".xlsx,.xls,.csv" hidden>`) +
     `<a class="btn" href="/api/export/${csv}?datos=${ctx.fuente}&sep=%3B" download="${csv}">Descargar CSV</a>`;
   raiz.innerHTML =
     `<div class="reg-barra"><div class="tabs" role="tablist" aria-label="Tipo de registro">` +
@@ -632,6 +637,105 @@ function confirmarBorrado(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Importación desde Excel
+// ---------------------------------------------------------------------------
+// El archivo se lee en el navegador (librería SheetJS en js/vendor), importar.js convierte cada fila en una respuesta y
+// el servidor (POST /api/importar/...) la valida y la guarda. Lo importado queda como respuestas reales.
+
+let cargaXlsx;
+/** Carga la librería para leer Excel la primera vez que se necesita. */
+function cargarXlsx() {
+  if (window.XLSX) return Promise.resolve();
+  cargaXlsx ||= new Promise((ok, mal) => {
+    const s = document.createElement("script");
+    s.src = "js/vendor/xlsx.full.min.js";
+    s.onload = ok;
+    s.onerror = () => {
+      cargaXlsx = null;
+      mal(new Error("no se pudo cargar js/vendor/xlsx.full.min.js"));
+    };
+    document.head.appendChild(s);
+  });
+  return cargaXlsx;
+}
+
+/** Tabla con las filas que no se importan y el motivo de cada una. */
+const tablaOmitidas = (l) =>
+  `<div class="scroll"><table class="tabla texto reg"><thead><tr><th>Fila de Excel</th><th>Correo</th><th>Motivo</th></tr></thead><tbody>` +
+  l.map((o) => `<tr><td>${esc(o.fila)}</td><td>${esc(o.correo)}</td><td>${esc(o.motivo)}</td></tr>`).join("") +
+  "</tbody></table></div>";
+
+/** Lee el archivo elegido, detecta si es de titulados o de empleadores y muestra la vista previa. */
+async function leerArchivo(input) {
+  const archivo = input.files && input.files[0];
+  input.value = ""; // permite volver a elegir el mismo archivo
+  if (!archivo) return;
+  let r;
+  try {
+    await cargarXlsx();
+    const libro = window.XLSX.read(await archivo.arrayBuffer(), { type: "array" });
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    r = mapearArchivo(window.XLSX.utils.sheet_to_json(hoja, { header: 1, raw: true, defval: null, blankrows: false }));
+  } catch (x) {
+    return avisar("No se pudo leer el archivo: " + x.message, "mal");
+  }
+  if (!r) return avisar("No se reconoció el archivo: debe ser la hoja de respuestas de la encuesta de titulados o de empleadores, con los encabezados originales.", "mal");
+  vistaPrevia(r, archivo.name);
+}
+
+/** Resumen de lo que se va a importar, antes de guardar nada. */
+function vistaPrevia(r, archivo) {
+  const n = r.filas.length;
+  const internos = r.filas.filter((f) => f.avisos.some((a) => a.startsWith("sin correo"))).length;
+  const otros = r.filas.flatMap((f) => f.avisos.filter((a) => !a.startsWith("sin correo")).map((a) => `Fila ${f.fila}: ${a}`));
+  abrir(
+    `<div class="dlg-form">${cabecera(`Importar respuestas de ${r.tipo}`, esc(archivo))}` +
+      `<div class="dlg-cuerpo"><section class="det-grupo"><h4>Resumen</h4><dl class="det">` +
+      `<dt>Filas con datos</dt><dd>${n + r.omitidas.length}</dd><dt>Listas para importar</dt><dd>${n}</dd><dt>Omitidas</dt><dd>${r.omitidas.length}</dd>` +
+      (internos ? `<dt>Sin correo válido</dt><dd>${internos} (se les asigna un identificador interno)</dd>` : "") +
+      `</dl></section>` +
+      (r.omitidas.length ? `<section class="det-grupo"><h4>Filas omitidas</h4>${tablaOmitidas(r.omitidas)}</section>` : "") +
+      (otros.length ? `<section class="det-grupo"><h4>Avisos (se importan igual)</h4><ul>${otros.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></section>` : "") +
+      `<p class="reg-nota">Se guardan como respuestas reales, con la fecha original de la encuesta. Si un correo ya respondió, esa fila se omite: se puede volver a importar el mismo archivo sin duplicar.</p></div>` +
+      `<p class="dlg-err" role="alert" hidden></p>` +
+      `<footer class="dlg-pie"><span class="sp"></span><button type="button" class="btn" data-cerrar>Cancelar</button>` +
+      `<button type="button" class="btn btn-primario" id="imp-ok"${n ? "" : " disabled"}>Importar ${n} respuestas</button></footer></div>`
+  );
+  $("imp-ok").onclick = () => importar(r);
+}
+
+/** Envía las respuestas al servidor y muestra cuántas se guardaron. */
+async function importar(r) {
+  const btn = $("imp-ok");
+  const err = dlg.querySelector(".dlg-err");
+  err.hidden = true;
+  btn.disabled = true;
+  btn.textContent = "Importando…";
+  try {
+    const res = await api(`/importar/${r.tipo}`, { method: "POST", body: JSON.stringify(r.filas.map((f) => f.datos)) }, r.tipo);
+    const omitidas = res.omitidas.map((o) => ({ fila: (r.filas[o.indice] || {}).fila ?? "—", correo: o.email, motivo: o.motivo }));
+    const verlas = ctx.fuente === "demo" ? "<p class=\"reg-nota\">Está viendo datos de demostración: cambie el origen a «Datos reales» para ver lo importado.</p>" : "";
+    abrir(
+      `<div class="dlg-form">${cabecera("Importación terminada", "")}` +
+        `<div class="dlg-cuerpo"><p><b>${res.importadas}</b> respuestas de ${esc(r.tipo)} importadas.</p>` +
+        (omitidas.length ? `<section class="det-grupo"><h4>No se importaron (${omitidas.length})</h4>${tablaOmitidas(omitidas)}</section>` : "") +
+        `${verlas}</div><footer class="dlg-pie"><span class="sp"></span><button type="button" class="btn btn-primario" data-cerrar autofocus>Cerrar</button></footer></div>`
+    );
+    E.k = r.tipo;
+    E.pag = 1;
+    E.q = "";
+    await cargarRegistros(ctx);
+    avisar(`Se importaron ${res.importadas} respuestas de ${r.tipo}.`, "ok");
+    alCambiar();
+  } catch (x) {
+    err.textContent = x.message;
+    err.hidden = false;
+    btn.disabled = false;
+    btn.textContent = `Importar ${r.filas.length} respuestas`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Arranque y eventos
 // ---------------------------------------------------------------------------
 
@@ -657,7 +761,13 @@ export function iniciarRegistros(contexto, cuandoCambia) {
       pintarTabla();
     } else if (t.dataset.reg === "reintentar") {
       cargarRegistros(ctx);
+    } else if (t.dataset.reg === "importar") {
+      $("reg-archivo").click();
     }
+  });
+
+  raiz.addEventListener("change", (e) => {
+    if (e.target.id === "reg-archivo") leerArchivo(e.target);
   });
 
   raiz.addEventListener("input", (e) => {
