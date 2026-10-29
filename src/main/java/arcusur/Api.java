@@ -2,7 +2,10 @@ package arcusur;
 
 import arcusur.Estadistica.Cruce;
 import arcusur.Estadistica.Dist;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.*;
@@ -24,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
  *  - GET  /api/stats?datos=reales|demo|todos : estadísticas para el panel de análisis.
  *  - POST /api/simulacion                    : simulación Monte Carlo de inscritos a un posgrado.
  *  - GET  /api/export/...                    : CSV limpio, crudo, diccionario y matrices de cruce.
+ *  - POST /api/importar/titulados y /api/importar/empleadores : guardan varias respuestas leídas de un Excel.
  *  - POST /api/seed y DELETE /api/reset      : datos de demostración (ficticios).
  *
  * Los cálculos están en {@link Estadistica} y los archivos CSV en {@link Exportacion}.
@@ -80,6 +84,121 @@ public class Api {
     } catch (DataIntegrityViolationException x) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, repetido);
     }
+  }
+
+  // =====================================================================
+  // 1a. IMPORTACIÓN MASIVA (respuestas leídas de un Excel por el panel)
+  // =====================================================================
+
+  /** Validador de las reglas de las entidades (obligatorios, rangos, largos), el mismo que aplica @Valid. */
+  private static final Validator VALIDADOR = Validation.buildDefaultValidatorFactory().getValidator();
+
+  /** Fila que no se importó: posición en la lista enviada, correo y motivo. */
+  private static Map<String, Object> omision(int indice, String email, String motivo) {
+    Map<String, Object> o = new LinkedHashMap<>();
+    o.put("indice", indice);
+    o.put("email", email == null ? "" : email);
+    o.put("motivo", motivo);
+    return o;
+  }
+
+  /** Texto legible con las reglas de validación incumplidas (campo y mensaje). */
+  private static String motivos(Set<? extends ConstraintViolation<?>> errores) {
+    return errores.stream().map(v -> v.getPropertyPath() + " " + v.getMessage()).sorted().collect(Collectors.joining("; "));
+  }
+
+  /** Devuelve la fecha original de la encuesta si es una marca ISO 8601 válida; si no, null. */
+  private static String fechaOriginal(String s) {
+    try {
+      return s == null || s.isBlank() ? null : java.time.OffsetDateTime.parse(s.trim()).toString();
+    } catch (java.time.format.DateTimeParseException x) {
+      return null;
+    }
+  }
+
+  /**
+   * Guarda varias respuestas de titulados a la vez. Cada fila se valida con las mismas reglas que el formulario;
+   * las que no pasan (o cuyo correo ya respondió) se omiten y se devuelven con su motivo. Las demás se guardan como
+   * respuestas reales (demo = false) conservando la fecha original de la encuesta.
+   */
+  @PostMapping("/importar/titulados")
+  public Map<String, Object> importarT(@RequestBody List<Titulado> filas,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    List<Map<String, Object>> omitidas = new ArrayList<>();
+    int guardadas = 0;
+    for (int i = 0; i < filas.size(); i++) {
+      Titulado t = filas.get(i);
+      if (t == null || t.email == null || t.email.isBlank()) {
+        omitidas.add(omision(i, null, "Falta el correo."));
+        continue;
+      }
+      t.id = null;
+      t.demo = false;
+      t.email = t.email.trim().toLowerCase(Locale.ROOT);
+      String fecha = fechaOriginal(t.registrado); // @PrePersist la reemplaza al guardar; se restituye después
+      t.registrado = null;
+      Set<ConstraintViolation<Titulado>> errores = VALIDADOR.validate(t);
+      String motivo = null;
+      if (!errores.isEmpty()) motivo = motivos(errores);
+      else if (tr.existsByEmailIgnoreCase(t.email)) motivo = "Este correo ya respondió la encuesta de titulados.";
+      else if (t.aniosDesempleado > t.aniosProfesionales) motivo = "Los años desempleado superan los años de vida profesional.";
+      if (motivo != null) {
+        omitidas.add(omision(i, t.email, motivo));
+        continue;
+      }
+      try {
+        Titulado g = tr.save(t);
+        if (fecha != null) {
+          g.registrado = fecha;
+          tr.save(g);
+        }
+        guardadas++;
+      } catch (DataIntegrityViolationException x) { // mismo correo guardado justo antes por otra solicitud
+        omitidas.add(omision(i, t.email, "Este correo ya respondió la encuesta de titulados."));
+      }
+    }
+    return Map.of("importadas", guardadas, "omitidas", omitidas);
+  }
+
+  /** Igual que {@link #importarT}, para las respuestas de empleadores. */
+  @PostMapping("/importar/empleadores")
+  public Map<String, Object> importarE(@RequestBody List<Empleador> filas,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    List<Map<String, Object>> omitidas = new ArrayList<>();
+    int guardadas = 0;
+    for (int i = 0; i < filas.size(); i++) {
+      Empleador e = filas.get(i);
+      if (e == null || e.email == null || e.email.isBlank()) {
+        omitidas.add(omision(i, null, "Falta el correo."));
+        continue;
+      }
+      e.id = null;
+      e.demo = false;
+      e.email = e.email.trim().toLowerCase(Locale.ROOT);
+      String fecha = fechaOriginal(e.registrado);
+      e.registrado = null;
+      Set<ConstraintViolation<Empleador>> errores = VALIDADOR.validate(e);
+      String motivo = null;
+      if (!errores.isEmpty()) motivo = motivos(errores);
+      else if (er.existsByEmailIgnoreCase(e.email)) motivo = "Este correo ya respondió la encuesta de empleadores.";
+      if (motivo != null) {
+        omitidas.add(omision(i, e.email, motivo));
+        continue;
+      }
+      try {
+        Empleador g = er.save(e);
+        if (fecha != null) {
+          g.registrado = fecha;
+          er.save(g);
+        }
+        guardadas++;
+      } catch (DataIntegrityViolationException x) {
+        omitidas.add(omision(i, e.email, "Este correo ya respondió la encuesta de empleadores."));
+      }
+    }
+    return Map.of("importadas", guardadas, "omitidas", omitidas);
   }
 
   // =====================================================================
@@ -373,7 +492,7 @@ public class Api {
         + es.stream().flatMap(e -> Arrays.stream(CAT_E).map(c -> (String) Exportacion.valor(e, c)))
         .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count());
     // Verificaciones de validez (el informe de calidad las exige): deben dar 0 si el formulario y el servidor hicieron su trabajo.
-    String[] obligT = {"edad", "genero", "formacion", "interes", "situacion", "tiempoPrimerTrabajo", "numEmpleos", "redContactos"};
+    String[] obligT = {"edad", "genero", "formacion", "interes", "situacion", "redContactos"};
     String[] obligE = {"empresa", "tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion", "medio", "cargos",
         "areasEmergentes", "herramientas", "competencias"};
     long vaciosT = ts.stream().mapToLong(t -> Arrays.stream(obligT).filter(c -> {
