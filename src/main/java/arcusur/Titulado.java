@@ -24,7 +24,13 @@ public class Titulado {
   @Size(max = 40) public String registrado;
 
   // ---- Campos obligatorios en todas las rutas ----
-  @NotBlank @Size(max = 255) public String edad, genero, formacion, interes, situacion, tiempoPrimerTrabajo, numEmpleos, redContactos;
+  @NotBlank @Size(max = 255) public String edad, genero, formacion, interes, situacion, redContactos;
+
+  /**
+   * Trayectoria laboral. El formulario web las exige a todos, pero el servidor las acepta vacías porque las respuestas
+   * importadas desde Excel pueden no tenerlas (por ejemplo, quien nunca trabajó).
+   */
+  @Size(max = 255) public String tiempoPrimerTrabajo, numEmpleos;
 
   /** Años de vida profesional y años desempleado (0 a 60). Base de media, mediana y desviación estándar. */
   @NotNull @DecimalMin("0") @DecimalMax("60") public Double aniosProfesionales, aniosDesempleado;

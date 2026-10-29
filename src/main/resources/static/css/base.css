@@ -1,0 +1,88 @@
+/* Base compartida: variables de diseño, tipografía, botones y campos de formulario. */
+:root {
+  --tinta: #1c2733;
+  --pizarra: #5b6775;
+  --papel: #f3f5f7;
+  --superficie: #ffffff;
+  --linea: #dde2e8;
+  --linea-fuerte: #b9c1cb;
+
+  --acento: #1f4d7a;
+  --acento-2: #3d73a8;
+  --acento-3: #a9c2dc;
+  --acento-suave: #e9eff6;
+
+  --verde: #2c6a4c;
+  --verde-suave: #e7f2ec;
+  --verde-linea: #b4d5c3;
+  --ambar: #9a5b00;
+  --ambar-suave: #fbf1de;
+  --ambar-linea: #e7cc9a;
+  --rojo: #a12b2b;
+  --rojo-suave: #fbeaea;
+  --rojo-linea: #e6b9b9;
+
+  --ctl: 40px;
+  --r: 6px;
+  --fuente: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--papel);
+  color: var(--tinta);
+  font: 15px/1.5 var(--fuente);
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--acento); }
+[hidden] { display: none !important; }
+
+:focus-visible { outline: 3px solid var(--acento-2); outline-offset: 2px; }
+
+/* Botones */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--ctl);
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--tinta);
+  background: var(--superficie);
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--r);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--acento); background: var(--acento-suave); }
+.btn-primario { color: #fff; background: var(--acento); border-color: var(--acento); }
+.btn-primario:hover { background: #17405f; border-color: #17405f; }
+.btn:disabled { opacity: 0.55; cursor: default; }
+
+/* Campos */
+input,
+select,
+textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--tinta);
+  background: var(--superficie);
+  border: 1px solid var(--linea-fuerte);
+  border-radius: var(--r);
+}
+input:not([type="radio"]):not([type="checkbox"]),
+select { height: var(--ctl); padding: 0 12px; }
+textarea { padding: 10px 12px; resize: vertical; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn { transition: background 0.15s, border-color 0.15s; }
+}

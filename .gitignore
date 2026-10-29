@@ -1,0 +1,12 @@
+# Maven
+target/
+
+# Java Runtime
+Arcusur/runtime/
+
+# Base de datos H2
+data/*.mv.db
+data/*.trace.db
+
+# Ejecutables
+*.jar

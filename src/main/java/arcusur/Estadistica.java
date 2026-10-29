@@ -6,6 +6,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.math3.distribution.ChiSquaredDistribution;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.apache.commons.math3.stat.descriptive.moment.Skewness;
+import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 
 /**
  * Limpieza de datos (data wrangling) y estadística de la aplicación.
@@ -270,21 +272,53 @@ public final class Estadistica {
     return new Dist(total, multiple, filas, multiple ? null : uniformidad(filas, total));
   }
 
-  /** Descriptivos de una variable numérica. */
-  public record Desc(long n, double media, double mediana, double sd, double min, double q1, double q3, double max) {}
+  /**
+   * Descriptivos de una variable numérica (todo lo que pide el informe de calidad y validación).
+   * moda es null cuando ningún valor se repite. cv = desviación / media × 100 (variabilidad relativa).
+   * asimetria = coeficiente de Fisher ajustado (igual que SKEW de Excel): &gt; 0 cola a la derecha, &lt; 0 a la izquierda.
+   * bigoteInf y bigoteSup son el menor y el mayor dato que caen dentro de las vallas de Tukey (extremos del diagrama de caja);
+   * atipicos son los datos que quedan fuera de [Q1 − 1,5·RIC ; Q3 + 1,5·RIC].
+   */
+  public record Desc(long n, double media, double mediana, Double moda, double sd, double varianza, double cv, double rango,
+      double min, double q1, double q3, double p90, double max, double asimetria,
+      double bigoteInf, double bigoteSup, double[] atipicos) {}
+
+  /**
+   * Percentil con el método R-7 (interpolación lineal en 1 + (n − 1)·p). Es el mismo que usan
+   * PERCENTIL.INC / CUARTIL.INC de Excel y Google Sheets, así que los resultados se pueden contrastar allí.
+   */
+  static double percentil(double[] v, double p) {
+    return new Percentile(p).withEstimationType(Percentile.EstimationType.R_7).evaluate(v);
+  }
+
+  /** Valor más repetido (el menor si hay empate). null si todos los valores son distintos. */
+  static Double moda(double[] v) {
+    Map<Double, Integer> c = new TreeMap<>();
+    for (double x : v) c.merge(x, 1, Integer::sum);
+    int max = Collections.max(c.values());
+    if (max < 2) return null;
+    for (Map.Entry<Double, Integer> e : c.entrySet()) if (e.getValue() == max) return e.getKey();
+    return null;
+  }
 
   public static Desc desc(double[] v) {
-    if (v.length == 0) return new Desc(0, 0, 0, 0, 0, 0, 0, 0);
+    if (v.length == 0) return new Desc(0, 0, 0, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, new double[0]);
     DescriptiveStatistics d = new DescriptiveStatistics(v);
-    return new Desc(v.length, r(d.getMean()), r(d.getPercentile(50)), r(d.getStandardDeviation()),
-        r(d.getMin()), r(d.getPercentile(25)), r(d.getPercentile(75)), r(d.getMax()));
+    double media = d.getMean(), sd = v.length > 1 ? d.getStandardDeviation() : 0;
+    double q1 = percentil(v, 25), q3 = percentil(v, 75), ric = q3 - q1, lo = q1 - 1.5 * ric, hi = q3 + 1.5 * ric;
+    double[] dentro = Arrays.stream(v).filter(x -> x >= lo && x <= hi).toArray();
+    double[] fuera = Arrays.stream(v).filter(x -> x < lo || x > hi).sorted().toArray();
+    double asim = v.length >= 3 && sd > 0 ? new Skewness().evaluate(v) : 0;
+    return new Desc(v.length, r(media), r(percentil(v, 50)), moda(v) == null ? null : r(moda(v)), r(sd), r(sd * sd),
+        media == 0 ? 0 : r(sd / media * 100), r(d.getMax() - d.getMin()), r(d.getMin()), r(q1), r(q3), r(percentil(v, 90)),
+        r(d.getMax()), r(asim), r(dentro.length == 0 ? d.getMin() : Arrays.stream(dentro).min().getAsDouble()),
+        r(dentro.length == 0 ? d.getMax() : Arrays.stream(dentro).max().getAsDouble()), Arrays.stream(fuera).map(Estadistica::r).toArray());
   }
 
   /** Cantidad de valores fuera de [Q1 - 1,5·RIC ; Q3 + 1,5·RIC] (regla de Tukey). Con menos de 4 datos devuelve 0. */
   public static long atipicos(double[] v) {
     if (v.length < 4) return 0;
-    DescriptiveStatistics d = new DescriptiveStatistics(v);
-    double q1 = d.getPercentile(25), q3 = d.getPercentile(75), ric = q3 - q1;
+    double q1 = percentil(v, 25), q3 = percentil(v, 75), ric = q3 - q1;
     return Arrays.stream(v).filter(x -> x < q1 - 1.5 * ric || x > q3 + 1.5 * ric).count();
   }
 
