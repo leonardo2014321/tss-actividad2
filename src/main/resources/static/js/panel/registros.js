@@ -318,7 +318,8 @@ function pintarCascaron() {
       ? ""
       : `<a class="btn btn-primario" href="index.html#${k}">Nueva respuesta</a>` +
         `<button type="button" class="btn" data-reg="importar" title="Cargar respuestas desde un Excel exportado de Microsoft Forms o Google Forms">Importar desde Excel</button>` +
-        `<input type="file" id="reg-archivo" accept=".xlsx,.xls,.csv" hidden>`) +
+        `<input type="file" id="reg-archivo" accept=".xlsx,.xls,.csv" hidden>` +
+        `<button type="button" class="btn btn-peligro" data-reg="borrartodas"${E.datos[k].length ? "" : " disabled"} title="Elimina de golpe todas las respuestas de esta lista">Eliminar todas</button>`) +
     `<a class="btn" href="/api/export/${csv}?datos=${ctx.fuente}&sep=%3B" download="${csv}">Descargar CSV</a>`;
   raiz.innerHTML =
     `<div class="reg-barra"><div class="tabs" role="tablist" aria-label="Tipo de registro">` +
@@ -636,6 +637,49 @@ function confirmarBorrado(id) {
   };
 }
 
+/** Elimina de golpe todas las respuestas de la lista que se está viendo (según el origen elegido: reales, demo o todos). */
+function confirmarBorrarTodas() {
+  const k = E.k;
+  const n = E.datos[k].length;
+  if (!n || k === "simulaciones") return;
+  const que = k === "titulados" ? "titulados" : "empleadores";
+  const origen = { reales: "reales", demo: "de demostración", todos: "reales y de demostración" }[ctx.fuente] || ctx.fuente;
+  abrir(
+    `<form class="dlg-form" id="delt-form">${cabecera(`¿Eliminar las ${n} respuestas de ${que}?`, "")}` +
+      `<div class="dlg-cuerpo"><p>Se borran de la base de datos todas las respuestas ${esc(origen)} de ${esc(que)} (${n}) y desaparecen de todas las estadísticas. ` +
+      `<b>Esta acción no se puede deshacer.</b></p>` +
+      `<div class="cmp"><label for="delt-txt"><span class="cmp-t">Para confirmar, escribe ELIMINAR</span></label><input type="text" id="delt-txt" autocomplete="off" autofocus></div></div>` +
+      `<p class="dlg-err" role="alert" hidden></p>` +
+      `<footer class="dlg-pie"><span class="sp"></span><button type="button" class="btn" data-cerrar>Cancelar</button>` +
+      `<button class="btn btn-peligro solido" id="delt-ok" disabled>Eliminar ${n} respuestas</button></footer></form>`
+  );
+  $("delt-txt").oninput = (e) => {
+    $("delt-ok").disabled = e.target.value.trim().toUpperCase() !== "ELIMINAR";
+  };
+  $("delt-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = dlg.querySelector(".dlg-err");
+    const btn = $("delt-ok");
+    err.hidden = true;
+    btn.disabled = true;
+    btn.textContent = "Eliminando…";
+    try {
+      const res = await api(`/${k}?datos=${encodeURIComponent(ctx.fuente)}`, { method: "DELETE" }, k);
+      E.datos[k] = [];
+      E.pag = 1;
+      cerrar();
+      pintarCascaron();
+      avisar(`Se eliminaron ${res.eliminadas} respuestas de ${que}.`, "ok");
+      alCambiar();
+    } catch (x) {
+      err.textContent = x.message;
+      err.hidden = false;
+      btn.disabled = false;
+      btn.textContent = `Eliminar ${n} respuestas`;
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Importación desde Excel
 // ---------------------------------------------------------------------------
@@ -685,18 +729,31 @@ async function leerArchivo(input) {
 
 /** Resumen de lo que se va a importar, antes de guardar nada. */
 function vistaPrevia(r, archivo) {
-  const n = r.filas.length;
+  // Filas cuyo correo YA está guardado en el sistema: el servidor las omitirá, así que se avisan antes de importar.
+  const guardados = new Map((E.datos[r.tipo] || []).map((x) => [String(x.email || "").trim().toLowerCase(), x]));
+  const yaEstan = r.filas.filter((f) => guardados.has(String(f.correo || "").trim().toLowerCase()));
+  const yaEstanTabla = yaEstan.map((f) => {
+    const x = guardados.get(String(f.correo || "").trim().toLowerCase());
+    const quien = r.tipo === "empleadores" ? ` de «${x.empresa || "sin nombre"}»` : "";
+    return { fila: f.fila, correo: f.correo, motivo: `Ya está guardada la respuesta n.º ${x.id}${quien} con este correo.` };
+  });
+  const n = r.filas.length - yaEstan.length; // las que realmente se van a agregar
+  const incompletas = r.filas.filter((f) => f.avisos.some((a) => !a.startsWith("sin correo"))).length;
   const internos = r.filas.filter((f) => f.avisos.some((a) => a.startsWith("sin correo"))).length;
   const otros = r.filas.flatMap((f) => f.avisos.filter((a) => !a.startsWith("sin correo")).map((a) => `Fila ${f.fila}: ${a}`));
   abrir(
     `<div class="dlg-form">${cabecera(`Importar respuestas de ${r.tipo}`, esc(archivo))}` +
       `<div class="dlg-cuerpo"><section class="det-grupo"><h4>Resumen</h4><dl class="det">` +
-      `<dt>Filas con datos</dt><dd>${n + r.omitidas.length}</dd><dt>Listas para importar</dt><dd>${n}</dd><dt>Omitidas</dt><dd>${r.omitidas.length}</dd>` +
+      `<dt>Filas con datos</dt><dd>${r.filas.length + r.omitidas.length}</dd><dt>Listas para importar (nuevas)</dt><dd>${n}</dd>` +
+      `<dt>Repetidas dentro del archivo (se omiten)</dt><dd>${r.omitidas.length}</dd>` +
+      `<dt>Ya guardadas en el sistema (se omiten)</dt><dd>${yaEstan.length}</dd>` +
+      (incompletas ? `<dt>Con datos faltantes o dudosos</dt><dd>${incompletas} (se importan igual y se avisa)</dd>` : "") +
       (internos ? `<dt>Sin correo válido</dt><dd>${internos} (se les asigna un identificador interno)</dd>` : "") +
       `</dl></section>` +
-      (r.omitidas.length ? `<section class="det-grupo"><h4>Filas omitidas</h4>${tablaOmitidas(r.omitidas)}</section>` : "") +
-      (otros.length ? `<section class="det-grupo"><h4>Avisos (se importan igual)</h4><ul>${otros.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></section>` : "") +
-      `<p class="reg-nota">Se guardan como respuestas reales, con la fecha original de la encuesta. Si un correo ya respondió, esa fila se omite: se puede volver a importar el mismo archivo sin duplicar.</p></div>` +
+      (r.omitidas.length ? `<section class="det-grupo"><h4>Repetidas dentro del archivo (no se importan)</h4>${tablaOmitidas(r.omitidas)}</section>` : "") +
+      (yaEstanTabla.length ? `<section class="det-grupo"><h4>Ya guardadas en el sistema (no se importan)</h4>${tablaOmitidas(yaEstanTabla)}</section>` : "") +
+      (otros.length ? `<section class="det-grupo"><h4>Avisos (esas filas se importan igual)</h4><ul>${otros.map((a) => `<li>${esc(a)}</li>`).join("")}</ul></section>` : "") +
+      `<p class="reg-nota">Se guardan todas como respuestas reales, con la fecha original de la encuesta. Lo que falta queda vacío y esa respuesta no se analiza en ese campo; el panel de calidad de datos lo cuenta. Solo se omiten los duplicados (mismo correo): se puede volver a importar el mismo archivo sin duplicar.</p></div>` +
       `<p class="dlg-err" role="alert" hidden></p>` +
       `<footer class="dlg-pie"><span class="sp"></span><button type="button" class="btn" data-cerrar>Cancelar</button>` +
       `<button type="button" class="btn btn-primario" id="imp-ok"${n ? "" : " disabled"}>Importar ${n} respuestas</button></footer></div>`
@@ -708,17 +765,21 @@ function vistaPrevia(r, archivo) {
 async function importar(r) {
   const btn = $("imp-ok");
   const err = dlg.querySelector(".dlg-err");
+  const textoBoton = btn.textContent;
   err.hidden = true;
   btn.disabled = true;
   btn.textContent = "Importando…";
   try {
     const res = await api(`/importar/${r.tipo}`, { method: "POST", body: JSON.stringify(r.filas.map((f) => f.datos)) }, r.tipo);
-    const omitidas = res.omitidas.map((o) => ({ fila: (r.filas[o.indice] || {}).fila ?? "—", correo: o.email, motivo: o.motivo }));
+    const aFila = (o) => ({ fila: (r.filas[o.indice] || {}).fila ?? "—", correo: o.email, motivo: o.motivo });
+    const omitidas = res.omitidas.map(aFila);
+    const ajustadas = (res.ajustadas || []).map(aFila);
     const verlas = ctx.fuente === "demo" ? "<p class=\"reg-nota\">Está viendo datos de demostración: cambie el origen a «Datos reales» para ver lo importado.</p>" : "";
     abrir(
       `<div class="dlg-form">${cabecera("Importación terminada", "")}` +
-        `<div class="dlg-cuerpo"><p><b>${res.importadas}</b> respuestas de ${esc(r.tipo)} importadas.</p>` +
+        `<div class="dlg-cuerpo"><p><b>${res.importadas}</b> respuestas de ${esc(r.tipo)} importadas de ${r.filas.length} enviadas${omitidas.length ? `; <b>${omitidas.length}</b> no se importaron (detalle abajo)` : ""}.</p>` +
         (omitidas.length ? `<section class="det-grupo"><h4>No se importaron (${omitidas.length})</h4>${tablaOmitidas(omitidas)}</section>` : "") +
+        (ajustadas.length ? `<section class="det-grupo"><h4>Ajustes del servidor (${ajustadas.length})</h4>${tablaOmitidas(ajustadas)}</section>` : "") +
         `${verlas}</div><footer class="dlg-pie"><span class="sp"></span><button type="button" class="btn btn-primario" data-cerrar autofocus>Cerrar</button></footer></div>`
     );
     E.k = r.tipo;
@@ -731,7 +792,7 @@ async function importar(r) {
     err.textContent = x.message;
     err.hidden = false;
     btn.disabled = false;
-    btn.textContent = `Importar ${r.filas.length} respuestas`;
+    btn.textContent = textoBoton;
   }
 }
 
@@ -763,6 +824,8 @@ export function iniciarRegistros(contexto, cuandoCambia) {
       cargarRegistros(ctx);
     } else if (t.dataset.reg === "importar") {
       $("reg-archivo").click();
+    } else if (t.dataset.reg === "borrartodas") {
+      confirmarBorrarTodas();
     }
   });
 

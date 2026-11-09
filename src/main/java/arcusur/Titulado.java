@@ -9,6 +9,10 @@ import jakarta.validation.constraints.*;
  *
  * Los campos opcionales dependen de las rutas condicionales del formulario:
  * por ejemplo, "nivelPosgrado" solo se llena si "formacion" es SI.
+ *
+ * Las reglas de abajo (@NotBlank, @NotNull) las exige el formulario web. Las respuestas importadas desde Excel
+ * (POST /api/importar/titulados) se guardan aunque les falte alguno de esos campos: queda vacío (null), esa respuesta
+ * no entra en el análisis de ese campo y el panel de calidad de datos lo cuenta como dato faltante.
  */
 @Entity
 @Table(name = "titulado", uniqueConstraints = @UniqueConstraint(name = "uk_titulado_email", columnNames = "email"))
