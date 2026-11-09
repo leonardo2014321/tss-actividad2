@@ -32,7 +32,8 @@ export const sinDatos = (fuente) =>
 // ---------------------------------------------------------------------------
 // Resumen ejecutivo
 // ---------------------------------------------------------------------------
-export function vResumen(s) {
+/** Indicadores principales del resumen. */
+function kResumen(s) {
   const K = [];
   if (s.nTitulados) {
     K.push(
@@ -43,11 +44,48 @@ export function vResumen(s) {
     );
   }
   if (s.nEmpleadores) K.push({ valor: s.nEmpleadores, etiqueta: "Empleadores encuestados" }, { valor: `${num(prevE(s), 0)} %`, etiqueta: "Prevé contratar Ingenieros de Sistemas" });
+  return K;
+}
+
+/** Quita las etiquetas HTML de un texto del panel para llevarlo a un archivo. */
+const plano = (h) => {
+  const d = document.createElement("div");
+  d.innerHTML = String(h ?? "");
+  return d.textContent.replace(/\s+/g, " ").trim();
+};
+
+/**
+ * Enlace que descarga el resumen (indicadores, decisiones recomendadas y comparación titulados-empleadores) como CSV.
+ * El archivo se arma en el navegador con lo que muestra la pantalla, así que coincide exactamente con el resumen visible.
+ */
+function enlaceResumen(s, ctx, texto = "Exportar resumen (CSV)") {
+  const sep = ctx?.sep || ";";
+  const celda = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const fila = (...c) => c.map(celda).join(sep);
+  const L = [fila("Resumen ejecutivo", `Datos: ${ctx?.fuente || "reales"}`), "", fila("Indicadores"), fila("Indicador", "Valor", "Detalle")];
+  for (const k of kResumen(s)) L.push(fila(k.etiqueta, plano(k.valor), plano(k.detalle)));
+  const ETQ = { ok: "Favorable", at: "Atender", mal: "Crítico", in: "Referencia" };
+  L.push("", fila("Decisiones recomendadas"), fila("Asunto", "Evidencia", "Criterio", "Estado", "Acción recomendada"));
+  for (const r of filasDecision(s)) L.push(fila(plano(r.tema), plano(r.evidencia), plano(r.criterio), ETQ[r.nivel] || r.nivel, plano(r.accion)));
+  if (s.nTitulados && s.nEmpleadores) {
+    const p = PARES.filter(([, t, e]) => s.likertT[t] && s.likertE[e] && s.likertT[t].n > 0 && s.likertE[e].n > 0);
+    if (p.length) {
+      L.push("", fila("Titulados frente a empleadores (porcentaje de acuerdo)"), fila("Afirmación", "Titulados (%)", "Empleadores (%)"));
+      for (const [nombre, t, e] of p) L.push(fila(nombre, num(s.likertT[t].acuerdo, 1), num(s.likertE[e].acuerdo, 1)));
+    }
+  }
+  const href = "data:text/csv;charset=utf-8," + encodeURIComponent("\ufeff" + L.join("\r\n"));
+  return `<a class="btn" href="${href}" download="resumen.csv">${texto}</a>`;
+}
+
+export function vResumen(s, ctx) {
+  const K = kResumen(s);
 
   const decisiones = bloque({
     titulo: "Decisiones recomendadas",
     meta: `${s.nTitulados} titulados · ${s.nEmpleadores} empleadores`,
     cuerpo: tablaDecisiones(filasDecision(s)),
+    pie: s.nTitulados || s.nEmpleadores ? enlaceResumen(s, ctx) : "",
     ancho: true,
     sinRelleno: true,
   });
@@ -267,7 +305,7 @@ export function vDatos(s, ctx) {
   const cumple = (ok) => estado(ok ? "ok" : "mal", ok ? "Cumple" : "No cumple");
   const val = [
     ["Respuestas duplicadas", q.duplicadosTitulados + q.duplicadosEmpleadores, "0", "Se repiten todas las respuestas de otra persona.", true],
-    ["Campos obligatorios vacíos", q.camposObligatoriosVacios, "0", "Distinto de 0 indica datos cargados por otra vía.", true],
+    ["Respuestas faltantes (campos sin responder)", q.camposObligatoriosVacios, "Informativo", "No se rechazan: esa respuesta no entra en el análisis del campo que dejó vacío (ver tabla de datos faltantes).", false],
     ["Valores fuera de rango", q.fueraDeRango, "0", "Años fuera de 0 a 60 o escalas fuera de su rango.", true],
     ["Años negativos", q.aniosNegativos, "0", "Un tiempo no puede ser negativo.", true],
     ["Incoherencias (desempleo mayor que vida profesional)", q.incoherentes, "0", "Más años desempleado que años de ejercicio.", true],
@@ -280,6 +318,28 @@ export function vDatos(s, ctx) {
     cuerpo: `<div class="scroll"><table class="tabla texto"><tr><th>Verificación</th><th>Resultado</th><th>Esperado</th><th>Estado</th><th>Detalle</th></tr>${val
       .map((r) => `<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td>${r[2]}</td><td>${r[4] ? cumple(r[1] === 0) : estado("in", "Informativo")}</td><td>${r[3]}</td></tr>`)
       .join("")}</table></div>`,
+    ancho: true,
+    sinRelleno: true,
+  });
+
+  // Datos faltantes: qué campos quedaron sin respuesta y en cuántas respuestas (cada una se excluye solo de su campo).
+  const NOM = {
+    ...TT, ...TE, ...LT, ...FPL, ...VCL,
+    formacion: "Formación complementaria", interes: "Interés en un posgrado", redContactos: "Interés en la red de contactos",
+    aniosProfesionales: "Años de vida profesional", aniosDesempleado: "Años desempleado", empresa: "Empresa o institución",
+    contrato: "Contrató titulados en los últimos 5 años", proyeccion: "Posibilidad de contratar", nivelFormacion: "Nivel de formación que demanda",
+    medio: "Medio de convocatoria", cargos: "Cargos de los titulados", areasEmergentes: "Áreas emergentes", herramientas: "Herramientas",
+    competencias: "Competencias", tamano: "Tamaño de la organización",
+  };
+  const faltan = q.faltantes || [];
+  const faltantes = bloque({
+    titulo: "Datos faltantes por campo",
+    meta: faltan.length ? `${faltan.length} campos con vacíos` : "",
+    cuerpo: faltan.length
+      ? `<div class="scroll"><table class="tabla texto"><tr><th>Encuesta</th><th>Campo</th><th>Sin respuesta</th><th>% de la encuesta</th><th>Tratamiento</th></tr>${faltan
+          .map((f) => `<tr><td>${f.fuente}</td><td>${NOM[f.campo] || f.campo}</td><td><b>${f.faltan}</b></td><td>${num(f.pct, 1)} %</td><td>No se analiza en este campo; las demás respuestas de esa persona sí se usan.</td></tr>`)
+          .join("")}</table></div>`
+      : '<p class="vacio">No hay campos sin responder.</p>',
     ancho: true,
     sinRelleno: true,
   });
@@ -303,7 +363,7 @@ export function vDatos(s, ctx) {
   ];
   const exportacion = bloque({
     titulo: "Exportación",
-    cuerpo: `<div class="descargas">${archivos.map(([f, t]) => enlaceCsv(ctx, f, f, t)).join("")}</div>`,
+    cuerpo: `<div class="descargas">${enlaceResumen(s, ctx, "Resumen ejecutivo")}${archivos.map(([f, t]) => enlaceCsv(ctx, f, f, t)).join("")}</div>`,
     nota: "Los archivos limpios están listos para analizar; los crudos conservan lo que respondió cada persona. El CSV de titulados incluye correo y teléfono: no se debe publicar ni compartir.",
     ancho: true,
   });
@@ -327,5 +387,5 @@ export function vDatos(s, ctx) {
     ancho: true,
   });
 
-  return K + columnas(validacion) + columnas(empresas, exportacion, metodologia, admin);
+  return K + columnas(validacion, faltantes) + columnas(empresas, exportacion, metodologia, admin);
 }

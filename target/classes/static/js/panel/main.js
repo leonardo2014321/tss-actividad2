@@ -16,7 +16,7 @@ let vistaActual = ALIAS[location.hash.slice(1)] || location.hash.slice(1);
  * para conservar los parámetros escritos al cambiar de vista.
  */
 const VISTAS = [
-  { id: "resumen", etiqueta: "Resumen", titulo: "Resumen ejecutivo", detalle: "Estado de la evidencia y decisiones recomendadas para el plan estratégico.", render: (s) => vResumen(s), visible: () => true, sinDatos: true },
+  { id: "resumen", etiqueta: "Resumen", titulo: "Resumen ejecutivo", detalle: "Estado de la evidencia y decisiones recomendadas para el plan estratégico.", render: (s) => vResumen(s, ctx), visible: () => true, sinDatos: true },
   { id: "titulados", etiqueta: "Titulados", titulo: "Titulados", detalle: "Perfil, inserción laboral, formación continua y valoración de la formación recibida.", render: (s) => vTitulados(s), visible: (s) => s.nTitulados > 0 },
   { id: "empleadores", etiqueta: "Empleadores", titulo: "Empleadores", detalle: "Perfil de las organizaciones, demanda de profesionales y valoración de la Carrera.", render: (s) => vEmpleadores(s), visible: (s) => s.nEmpleadores > 0 },
   { id: "simulacion", etiqueta: "Oferta de posgrado", titulo: "Oferta de posgrado", detalle: "Probabilidad de que un programa alcance el mínimo de inscritos, con y sin becas.", visible: () => true, estatica: true },

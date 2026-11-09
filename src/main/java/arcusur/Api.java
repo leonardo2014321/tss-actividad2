@@ -27,7 +27,9 @@ import org.springframework.web.server.ResponseStatusException;
  *  - GET  /api/stats?datos=reales|demo|todos : estadísticas para el panel de análisis.
  *  - POST /api/simulacion                    : simulación Monte Carlo de inscritos a un posgrado.
  *  - GET  /api/export/...                    : CSV limpio, crudo, diccionario y matrices de cruce.
+ *  - DELETE /api/titulados y /api/empleadores?datos=reales|demo|todos : eliminan todas las respuestas del conjunto elegido.
  *  - POST /api/importar/titulados y /api/importar/empleadores : guardan varias respuestas leídas de un Excel.
+ *    Se importan TODAS (aunque falten campos); solo se omiten los duplicados (mismo correo).
  *  - POST /api/seed y DELETE /api/reset      : datos de demostración (ficticios).
  *
  * Los cálculos están en {@link Estadistica} y los archivos CSV en {@link Exportacion}.
@@ -102,11 +104,6 @@ public class Api {
     return o;
   }
 
-  /** Texto legible con las reglas de validación incumplidas (campo y mensaje). */
-  private static String motivos(Set<? extends ConstraintViolation<?>> errores) {
-    return errores.stream().map(v -> v.getPropertyPath() + " " + v.getMessage()).sorted().collect(Collectors.joining("; "));
-  }
-
   /** Devuelve la fecha original de la encuesta si es una marca ISO 8601 válida; si no, null. */
   private static String fechaOriginal(String s) {
     try {
@@ -117,34 +114,98 @@ public class Api {
   }
 
   /**
-   * Guarda varias respuestas de titulados a la vez. Cada fila se valida con las mismas reglas que el formulario;
-   * las que no pasan (o cuyo correo ya respondió) se omiten y se devuelven con su motivo. Las demás se guardan como
-   * respuestas reales (demo = false) conservando la fecha original de la encuesta.
+   * Prepara una fila importada para guardarla SIN rechazarla por estar incompleta.
+   * <ul>
+   *   <li>Campo obligatorio vacío (@NotBlank / @NotNull): se deja vacío. Esa respuesta no entra en el análisis de ese
+   *       campo y el panel de calidad lo cuenta como dato faltante.</li>
+   *   <li>Texto más largo que el máximo (@Size): se recorta.</li>
+   *   <li>Valor fuera de rango (@Min / @Max / @DecimalMin / @DecimalMax): se deja vacío para no distorsionar las medias.</li>
+   *   <li>Correo inválido (@Email): el que decide qué hacer con el correo es {@link #importarT}; aquí solo se anota.</li>
+   * </ul>
+   * Devuelve los ajustes hechos (texto legible) para informarlos al usuario.
+   */
+  private static <T> List<String> ajustar(T fila) {
+    List<String> ajustes = new ArrayList<>();
+    for (ConstraintViolation<T> v : VALIDADOR.validate(fila)) {
+      String campo = v.getPropertyPath().toString();
+      String regla = v.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName();
+      if (campo.equals("email") || regla.equals("NotBlank") || regla.equals("NotNull")) continue; // faltantes: se conservan vacíos
+      try {
+        java.lang.reflect.Field f = fila.getClass().getField(campo);
+        Object valor = f.get(fila);
+        if (regla.equals("Size") && valor instanceof String texto) {
+          int max = (Integer) v.getConstraintDescriptor().getAttributes().get("max");
+          f.set(fila, texto.substring(0, max));
+          ajustes.add(campo + ": texto recortado a " + max + " caracteres");
+        } else {
+          f.set(fila, null);
+          ajustes.add(campo + ": " + v.getMessage() + ", se dejó sin dato");
+        }
+      } catch (ReflectiveOperationException x) {
+        // un campo que no se pudo ajustar no debe impedir guardar la respuesta
+      }
+    }
+    return ajustes;
+  }
+
+  /** Mensaje de la causa más profunda de un error de base de datos (lo que realmente falló). */
+  private static String causa(Throwable x) {
+    Throwable c = x;
+    while (c.getCause() != null && c.getCause() != c) c = c.getCause();
+    String m = c.getMessage() == null ? c.getClass().getSimpleName() : c.getMessage();
+    return m.length() > 300 ? m.substring(0, 300) + "…" : m;
+  }
+
+  /** Correo interno único para una respuesta cuyo correo falta o no es válido (nunca choca con otro). */
+  private static String correoInterno(String tipo) {
+    return tipo + "-" + UUID.randomUUID() + "@importado.arcusur.test";
+  }
+
+  /** Resultado de importar un conjunto de filas: cuántas se guardaron, cuáles se omitieron y cuáles se ajustaron. */
+  private static Map<String, Object> resultado(int guardadas, List<Map<String, Object>> omitidas, List<Map<String, Object>> ajustadas) {
+    Map<String, Object> r = new LinkedHashMap<>();
+    r.put("importadas", guardadas);
+    r.put("omitidas", omitidas);
+    r.put("ajustadas", ajustadas);
+    return r;
+  }
+
+  /**
+   * Guarda varias respuestas de titulados a la vez. Se importan TODAS las filas, aunque tengan campos vacíos o
+   * incoherencias: lo que falta queda vacío (no entra en el análisis de ese campo) y el panel de calidad lo cuenta.
+   * Lo único que se omite es el duplicado: un correo que ya respondió o que se repite en el mismo envío.
+   * Las respuestas se guardan como reales (demo = false) conservando la fecha original de la encuesta.
    */
   @PostMapping("/importar/titulados")
   public Map<String, Object> importarT(@RequestBody List<Titulado> filas,
       @RequestHeader(value = CLAVE, required = false) String clave) {
     autorizar(clave);
-    List<Map<String, Object>> omitidas = new ArrayList<>();
+    List<Map<String, Object>> omitidas = new ArrayList<>(), ajustadas = new ArrayList<>();
+    Set<String> enEsteEnvio = new HashSet<>();
+    Map<String, Titulado> guardadasAntes = new HashMap<>(); // para decir CON CUÁL respuesta ya guardada choca un duplicado
+    for (Titulado g : tr.findAll()) guardadasAntes.putIfAbsent(g.email.toLowerCase(Locale.ROOT), g);
     int guardadas = 0;
     for (int i = 0; i < filas.size(); i++) {
       Titulado t = filas.get(i);
-      if (t == null || t.email == null || t.email.isBlank()) {
-        omitidas.add(omision(i, null, "Falta el correo."));
+      if (t == null) {
+        omitidas.add(omision(i, null, "Fila vacía."));
         continue;
       }
       t.id = null;
       t.demo = false;
-      t.email = t.email.trim().toLowerCase(Locale.ROOT);
       String fecha = fechaOriginal(t.registrado); // @PrePersist la reemplaza al guardar; se restituye después
       t.registrado = null;
-      Set<ConstraintViolation<Titulado>> errores = VALIDADOR.validate(t);
-      String motivo = null;
-      if (!errores.isEmpty()) motivo = motivos(errores);
-      else if (tr.existsByEmailIgnoreCase(t.email)) motivo = "Este correo ya respondió la encuesta de titulados.";
-      else if (t.aniosDesempleado > t.aniosProfesionales) motivo = "Los años desempleado superan los años de vida profesional.";
-      if (motivo != null) {
-        omitidas.add(omision(i, t.email, motivo));
+      List<String> ajustes = ajustar(t);
+      if (t.email == null || t.email.isBlank() || !t.email.contains("@")) {
+        t.email = correoInterno("titulado");
+        ajustes.add("sin correo válido: se asignó un identificador interno");
+      }
+      t.email = t.email.trim().toLowerCase(Locale.ROOT);
+      Titulado previo = guardadasAntes.get(t.email);
+      if (previo != null || !enEsteEnvio.add(t.email)) {
+        omitidas.add(omision(i, t.email, previo != null
+            ? "Duplicado: ya está guardada la respuesta n.º " + previo.id + " con este correo (registrada " + previo.registrado + ")."
+            : "Duplicado: el correo se repite dentro de este mismo envío."));
         continue;
       }
       try {
@@ -154,11 +215,15 @@ public class Api {
           tr.save(g);
         }
         guardadas++;
-      } catch (DataIntegrityViolationException x) { // mismo correo guardado justo antes por otra solicitud
-        omitidas.add(omision(i, t.email, "Este correo ya respondió la encuesta de titulados."));
+        if (!ajustes.isEmpty()) ajustadas.add(omision(i, t.email, String.join("; ", ajustes)));
+      } catch (DataIntegrityViolationException x) {
+        // Solo es duplicado si el correo realmente ya existe; cualquier otro fallo de la base se informa con su causa real.
+        omitidas.add(omision(i, t.email, tr.existsByEmailIgnoreCase(t.email)
+            ? "Duplicado: este correo ya respondió la encuesta de titulados."
+            : "No se pudo guardar: " + causa(x)));
       }
     }
-    return Map.of("importadas", guardadas, "omitidas", omitidas);
+    return resultado(guardadas, omitidas, ajustadas);
   }
 
   /** Igual que {@link #importarT}, para las respuestas de empleadores. */
@@ -166,25 +231,32 @@ public class Api {
   public Map<String, Object> importarE(@RequestBody List<Empleador> filas,
       @RequestHeader(value = CLAVE, required = false) String clave) {
     autorizar(clave);
-    List<Map<String, Object>> omitidas = new ArrayList<>();
+    List<Map<String, Object>> omitidas = new ArrayList<>(), ajustadas = new ArrayList<>();
+    Set<String> enEsteEnvio = new HashSet<>();
+    Map<String, Empleador> guardadasAntes = new HashMap<>();
+    for (Empleador g : er.findAll()) guardadasAntes.putIfAbsent(g.email.toLowerCase(Locale.ROOT), g);
     int guardadas = 0;
     for (int i = 0; i < filas.size(); i++) {
       Empleador e = filas.get(i);
-      if (e == null || e.email == null || e.email.isBlank()) {
-        omitidas.add(omision(i, null, "Falta el correo."));
+      if (e == null) {
+        omitidas.add(omision(i, null, "Fila vacía."));
         continue;
       }
       e.id = null;
       e.demo = false;
-      e.email = e.email.trim().toLowerCase(Locale.ROOT);
       String fecha = fechaOriginal(e.registrado);
       e.registrado = null;
-      Set<ConstraintViolation<Empleador>> errores = VALIDADOR.validate(e);
-      String motivo = null;
-      if (!errores.isEmpty()) motivo = motivos(errores);
-      else if (er.existsByEmailIgnoreCase(e.email)) motivo = "Este correo ya respondió la encuesta de empleadores.";
-      if (motivo != null) {
-        omitidas.add(omision(i, e.email, motivo));
+      List<String> ajustes = ajustar(e);
+      if (e.email == null || e.email.isBlank() || !e.email.contains("@")) {
+        e.email = correoInterno("empleador");
+        ajustes.add("sin correo válido: se asignó un identificador interno");
+      }
+      e.email = e.email.trim().toLowerCase(Locale.ROOT);
+      Empleador previo = guardadasAntes.get(e.email);
+      if (previo != null || !enEsteEnvio.add(e.email)) {
+        omitidas.add(omision(i, e.email, previo != null
+            ? "Duplicado: ya está guardada la respuesta n.º " + previo.id + " de «" + previo.empresa + "» con este correo (registrada " + previo.registrado + ")."
+            : "Duplicado: el correo se repite dentro de este mismo envío."));
         continue;
       }
       try {
@@ -194,11 +266,15 @@ public class Api {
           er.save(g);
         }
         guardadas++;
+        if (!ajustes.isEmpty()) ajustadas.add(omision(i, e.email, String.join("; ", ajustes)));
       } catch (DataIntegrityViolationException x) {
-        omitidas.add(omision(i, e.email, "Este correo ya respondió la encuesta de empleadores."));
+        // Solo es duplicado si el correo realmente ya existe; cualquier otro fallo de la base se informa con su causa real.
+        omitidas.add(omision(i, e.email, er.existsByEmailIgnoreCase(e.email)
+            ? "Duplicado: este correo ya respondió la encuesta de empleadores."
+            : "No se pudo guardar: " + causa(x)));
       }
     }
-    return Map.of("importadas", guardadas, "omitidas", omitidas);
+    return resultado(guardadas, omitidas, ajustadas);
   }
 
   // =====================================================================
@@ -223,7 +299,7 @@ public class Api {
 
   /** Regla de coherencia: no se puede haber estado desempleado más años que los de vida profesional. */
   private static void coherente(Titulado t) {
-    if (t.aniosDesempleado > t.aniosProfesionales) {
+    if (incoherente(t)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El tiempo desempleado no puede superar los años de vida profesional.");
     }
   }
@@ -313,6 +389,29 @@ public class Api {
     return Map.of("eliminado", id, "email", e.email);
   }
 
+  /**
+   * Elimina de golpe todas las respuestas de titulados del conjunto elegido en {@code datos}:
+   * reales (por defecto), demo o todos. Pide la clave de administración si está configurada.
+   */
+  @DeleteMapping("/titulados")
+  public Map<String, Object> borrarTodosT(@RequestParam(defaultValue = "reales") String datos,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    List<Titulado> l = titulados(datos);
+    tr.deleteAll(l);
+    return Map.of("eliminadas", l.size());
+  }
+
+  /** Igual que {@link #borrarTodosT}, para las respuestas de empleadores. */
+  @DeleteMapping("/empleadores")
+  public Map<String, Object> borrarTodosE(@RequestParam(defaultValue = "reales") String datos,
+      @RequestHeader(value = CLAVE, required = false) String clave) {
+    autorizar(clave);
+    List<Empleador> l = empleadores(datos);
+    er.deleteAll(l);
+    return Map.of("eliminadas", l.size());
+  }
+
   // ---- Simulaciones guardadas ----
 
   /**
@@ -353,8 +452,14 @@ public class Api {
     return (Integer) Exportacion.valor(e, n);
   }
 
-  /** Segmento de madurez profesional: junior (hasta 3 años) o consolidado (más de 3 años). */
+  /** true si hay más años desempleado que de vida profesional. Si falta alguno de los dos datos no se puede juzgar (false). */
+  static boolean incoherente(Titulado t) {
+    return t.aniosProfesionales != null && t.aniosDesempleado != null && t.aniosDesempleado > t.aniosProfesionales;
+  }
+
+  /** Segmento de madurez profesional: junior (hasta 3 años) o consolidado (más de 3 años). null si no respondió los años. */
   static String segmento(Titulado t) {
+    if (t.aniosProfesionales == null) return null;
     return t.aniosProfesionales <= 3 ? "Junior (hasta 3 años)" : "Consolidado (más de 3 años)";
   }
 
@@ -433,6 +538,26 @@ public class Api {
     return n == 0 ? 0 : Estadistica.r1(1.96 * Math.sqrt(0.25 / n) * 100);
   }
 
+  /** true si el valor falta: nulo o texto en blanco. */
+  private static boolean vacio(Object v) {
+    return v == null || v.toString().isBlank();
+  }
+
+  /** true si hay un valor y queda fuera de [min, max]. Un dato que falta NO es un dato fuera de rango. */
+  private static boolean fuera(Number v, double min, double max) {
+    return v != null && (v.doubleValue() < min || v.doubleValue() > max);
+  }
+
+  /** Fila de la tabla de datos faltantes: de qué encuesta, qué campo, cuántas respuestas lo dejaron vacío y qué porcentaje. */
+  private static Map<String, Object> faltante(String fuente, String campo, long faltan, long total) {
+    Map<String, Object> f = new LinkedHashMap<>();
+    f.put("fuente", fuente);
+    f.put("campo", campo);
+    f.put("faltan", faltan);
+    f.put("pct", total == 0 ? 0 : Estadistica.r1(faltan * 100.0 / total));
+    return f;
+  }
+
   // =====================================================================
   // 4. ESTADÍSTICAS PARA EL PANEL
   // =====================================================================
@@ -457,15 +582,16 @@ public class Api {
     Map<String, String> empresas = new TreeMap<>(); // clave de la empresa -> "Público" / "Privado" / "Sin dato"
     Map<String, String> nombres = new HashMap<>();
     for (Empleador e : es) {
+      if (e.empresa == null || e.empresa.isBlank()) continue; // sin nombre no se puede individualizar la empresa
       String k = Estadistica.clave(e.empresa);
       nombres.putIfAbsent(k, e.empresa.trim());
-      empresas.merge(k, Estadistica.etiqueta(e.tipo), (a, b) -> a);
+      empresas.merge(k, e.tipo == null || e.tipo.isBlank() ? "Sin dato" : Estadistica.etiqueta(e.tipo), (a, b) -> a.equals("Sin dato") ? b : a);
     }
     for (Titulado t : ts) {
       if (t.empresa == null || t.empresa.isBlank()) continue;
       String k = Estadistica.clave(t.empresa);
       nombres.putIfAbsent(k, t.empresa.trim());
-      empresas.merge(k, t.sector == null ? "Sin dato" : Estadistica.etiqueta(t.sector), (a, b) -> a.equals("Sin dato") ? b : a);
+      empresas.merge(k, t.sector == null || t.sector.isBlank() ? "Sin dato" : Estadistica.etiqueta(t.sector), (a, b) -> a.equals("Sin dato") ? b : a);
     }
     long pub = empresas.values().stream().filter(v -> Estadistica.clave(v).equals("publico")).count();
     long pri = empresas.values().stream().filter(v -> Estadistica.clave(v).equals("privado")).count();
@@ -480,11 +606,12 @@ public class Api {
     m.put("muestra", mu);
 
     // ---- Calidad de los datos (resultado de la etapa de limpieza) ----
-    double[] anios = ts.stream().mapToDouble(t -> t.aniosProfesionales).toArray();
+    // Solo entran las respuestas que sí informaron los años: una respuesta vacía no es un 0.
+    double[] anios = ts.stream().map(t -> t.aniosProfesionales).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray();
     Map<String, Object> q = new LinkedHashMap<>();
     q.put("duplicadosTitulados", duplicados(ts));
     q.put("duplicadosEmpleadores", duplicados(es));
-    q.put("incoherentes", ts.stream().filter(t -> t.aniosDesempleado > t.aniosProfesionales).count());
+    q.put("incoherentes", ts.stream().filter(Api::incoherente).count());
     q.put("atipicos", Estadistica.atipicos(anios));
     q.put("categoriasUnificadas", unificadas(ts, CAT_T) + unificadas(es, CAT_E));
     q.put("otrasEspecificadas", ts.stream().flatMap(t -> Arrays.stream(CAT_T).map(c -> (String) Exportacion.valor(t, c)))
@@ -492,38 +619,45 @@ public class Api {
         + es.stream().flatMap(e -> Arrays.stream(CAT_E).map(c -> (String) Exportacion.valor(e, c)))
         .filter(v -> v != null && !Estadistica.textoOtro(v).isEmpty()).count());
     // Verificaciones de validez (el informe de calidad las exige): deben dar 0 si el formulario y el servidor hicieron su trabajo.
-    String[] obligT = {"edad", "genero", "formacion", "interes", "situacion", "redContactos"};
-    String[] obligE = {"empresa", "tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion", "medio", "cargos",
-        "areasEmergentes", "herramientas", "competencias"};
-    long vaciosT = ts.stream().mapToLong(t -> Arrays.stream(obligT).filter(c -> {
-      Object v = Exportacion.valor(t, c);
-      return v == null || v.toString().isBlank();
-    }).count()).sum();
-    long vaciosE = es.stream().mapToLong(e -> Arrays.stream(obligE).filter(c -> {
-      Object v = Exportacion.valor(e, c);
-      return v == null || v.toString().isBlank();
-    }).count()).sum();
+    // Campos que toda respuesta debería traer. Un vacío no impide guardar (p. ej. al importar de Excel): se cuenta aquí
+    // y esa respuesta queda fuera del análisis de ese campo.
+    String[] obligT = {"edad", "genero", "formacion", "interes", "situacion", "redContactos",
+      "aniosProfesionales", "aniosDesempleado", "opinionPosgrado", "satisfaccion", "concordancia"};
+    String[] obligE = Stream.concat(Stream.of("empresa", "tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion",
+        "medio", "cargos", "areasEmergentes", "herramientas", "competencias"), Arrays.stream(AFIRM)).toArray(String[]::new);
+    List<Map<String, Object>> faltantes = new ArrayList<>();
+    long vaciosT = 0, vaciosE = 0;
+    for (String c : obligT) {
+      long n = ts.stream().filter(t -> vacio(Exportacion.valor(t, c))).count();
+      vaciosT += n;
+      if (n > 0) faltantes.add(faltante("Titulados", c, n, ts.size()));
+    }
+    for (String c : obligE) {
+      long n = es.stream().filter(e -> vacio(Exportacion.valor(e, c))).count();
+      vaciosE += n;
+      if (n > 0) faltantes.add(faltante("Empleadores", c, n, es.size()));
+    }
+    faltantes.sort((x, y) -> Long.compare((Long) y.get("faltan"), (Long) x.get("faltan")));
     long celdas = (long) ts.size() * obligT.length + (long) es.size() * obligE.length;
-    long fuera = ts.stream().filter(t -> t.aniosProfesionales < 0 || t.aniosProfesionales > 60 || t.aniosDesempleado < 0 || t.aniosDesempleado > 60
-        || t.opinionPosgrado < 1 || t.opinionPosgrado > 4 || t.satisfaccion < 1 || t.satisfaccion > 4 || t.concordancia < 1 || t.concordancia > 4
-        || (t.pertinencia != null && (t.pertinencia < 1 || t.pertinencia > 4))).count()
-        + es.stream().filter(e -> Arrays.stream(AFIRM).anyMatch(n -> {
-          Integer x = ig(e, n);
-          return x == null || x < 0 || x > 3;
-        })).count();
+    long fuera = ts.stream().filter(t -> fuera(t.aniosProfesionales, 0, 60) || fuera(t.aniosDesempleado, 0, 60)
+        || fuera(t.opinionPosgrado, 1, 4) || fuera(t.satisfaccion, 1, 4) || fuera(t.concordancia, 1, 4) || fuera(t.pertinencia, 1, 4)).count()
+        + es.stream().filter(e -> Arrays.stream(AFIRM).anyMatch(n -> fuera(ig(e, n), 0, 3))).count();
+    q.put("faltantes", faltantes);
     q.put("camposObligatoriosVacios", vaciosT + vaciosE);
     q.put("completitud", celdas == 0 ? 100.0 : Estadistica.r1(100.0 * (celdas - vaciosT - vaciosE) / celdas));
     q.put("fueraDeRango", fuera);
-    q.put("aniosNegativos", ts.stream().filter(t -> t.aniosProfesionales < 0 || t.aniosDesempleado < 0).count());
+    q.put("aniosNegativos", ts.stream().filter(t -> (t.aniosProfesionales != null && t.aniosProfesionales < 0)
+        || (t.aniosDesempleado != null && t.aniosDesempleado < 0)).count());
     m.put("calidad", q);
 
     // ---- Titulados ----
     if (!ts.isEmpty()) {
       m.put("anios", Estadistica.desc(anios));
       m.put("aniosHist", Estadistica.histAnios(anios));
-      m.put("junior", ts.stream().filter(t -> t.aniosProfesionales <= 3).count());
-      m.put("consolidado", ts.stream().filter(t -> t.aniosProfesionales > 3).count());
-      m.put("pctInteres", Estadistica.r(ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / ts.size()));
+      m.put("junior", ts.stream().filter(t -> t.aniosProfesionales != null && t.aniosProfesionales <= 3).count());
+      m.put("consolidado", ts.stream().filter(t -> t.aniosProfesionales != null && t.aniosProfesionales > 3).count());
+      long conInteres = ts.stream().filter(t -> t.interes != null && !t.interes.isBlank()).count(); // solo quienes respondieron
+      m.put("pctInteres", conInteres == 0 ? 0 : Estadistica.r(ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / conInteres));
 
       Map<String, Dist> d = new LinkedHashMap<>();
       d.put("edad", Estadistica.dist(ts, t -> t.edad, false, "edad", Opciones.TITULADOS.get("edad")));
@@ -684,8 +818,9 @@ public class Api {
     List<Titulado> ts = titulados(datos);
 
     // Probabilidad de interés observada en las respuestas (si hay); es el valor por defecto de la simulación.
-    Double deLaEncuesta = ts.isEmpty() ? null
-        : ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / ts.size();
+    long conInteres = ts.stream().filter(t -> t.interes != null && !t.interes.isBlank()).count(); // quien no respondió no cuenta
+    Double deLaEncuesta = conInteres == 0 ? null
+        : ts.stream().filter(t -> "SI".equalsIgnoreCase(t.interes)).count() * 1.0 / conInteres;
     double pInteres = Math.min(1, Math.max(0, num(p, "probInteres", deLaEncuesta != null ? deLaEncuesta : 0.6)));
     String origen = deLaEncuesta != null && Math.abs(pInteres - deLaEncuesta) < 0.005 ? "datos" : "manual";
 

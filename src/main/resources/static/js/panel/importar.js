@@ -112,16 +112,27 @@ function likert3(v) {
   return x ? x[1] : null;
 }
 
-/** Años a partir de texto libre: «2 años», «6 meses», «1,5», «ninguno». Devuelve null si no se entiende. */
+/** Números escritos con letras que aparecen en las respuestas («dos años», «medio año»). */
+const PALABRAS = { cero: 0, un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10,
+  once: 11, doce: 12, trece: 13, catorce: 14, quince: 15, veinte: 20, medio: 0.5, media: 0.5 };
+
+/** Años a partir de texto libre: «2 años», «dos años», «medio año», «6 meses», «1 año y 6 meses», «1,5», «ninguno». null si no se entiende. */
 function aniosDe(v) {
   if (typeof v === "number") return v;
-  const t = norm(v).replace(",", ".");
+  let t = norm(v).replace(",", ".");
   if (!t) return null;
   if (/^(ninguno|ninguna|nada|nunca)\b/.test(t) || /siempre estuve/.test(t)) return 0;
-  const m = t.match(/(\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const x = parseFloat(m[1]) / (/mes/.test(t) ? 12 : 1);
-  return Math.round(x * 100) / 100;
+  t = t.replace(/\b[a-z]+\b/g, (w) => (w in PALABRAS ? ` ${PALABRAS[w]} ` : w)); // «dos años» -> « 2  anos»
+  t = t.replace(/(\d)\s+0\.5\b/, "$1 y 0.5").replace(/\b0\.5\s+(?=y\b)/, "0.5 "); // «1 año y medio»
+  const un = "(?:anos?|anios?|years?)";
+  let total = 0, hay = false;
+  for (const m of t.matchAll(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${un}`, "g"))) (total += parseFloat(m[1])), (hay = true);
+  for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*mes/g)) (total += parseFloat(m[1]) / 12), (hay = true);
+  if (/(\d)\s*(?:anos?|anios?)?\s*y\s*0\.5\b/.test(t)) (total += 0.5), (hay = true); // «1 año y medio»
+  if (/^\s*0\.5\s+(?:de\s+)?(?:anos?|anios?)\b/.test(t) && !/mes/.test(t) && total === 0.5) hay = true; // «medio año»
+  if (hay) return Math.round(total * 100) / 100;
+  const n = t.match(/^\s*(\d+(?:\.\d+)?)\s*$/); // solo un número: años
+  return n ? parseFloat(n[1]) : null;
 }
 
 /**
@@ -241,7 +252,7 @@ const AFIRMACIONES = [...Array.from({ length: 10 }, (_, i) => `fp${i + 1}`), ...
 // Titulados
 // ---------------------------------------------------------------------------
 
-/** Campos sin los cuales el servidor rechaza la respuesta. */
+/** Campos que se revisan al importar: si faltan, la fila se importa igual y se avisa (no entra en el análisis de ese campo). */
 const OBLIGATORIOS_T = ["email", "edad", "genero", "formacion", "interes", "situacion", "redContactos", "aniosProfesionales", "aniosDesempleado", "opinionPosgrado", "satisfaccion", "concordancia"];
 const OBLIGATORIOS_E = ["email", "empresa", "tipo", "tamano", "rubro", "contrato", "proyeccion", "nivelFormacion", "medio", "cargos", "areasEmergentes", "herramientas", "competencias", ...AFIRMACIONES];
 
@@ -322,15 +333,17 @@ function mapearTitulados(aoa) {
       else t[c] = n;
     }
 
-    // Años: solo los de vida profesional son indispensables; si «desempleado» no se entiende se toma 0 y se avisa.
-    const ap = aniosDe(g(r, "aniosProfesionales"));
-    if (ap != null && ap >= 0 && ap <= 60) t.aniosProfesionales = ap;
-    const ad = aniosDe(g(r, "aniosDesempleado"));
-    if (ad != null && ad >= 0 && ad <= 60) t.aniosDesempleado = ad;
-    else if (t.aniosProfesionales != null) {
-      t.aniosDesempleado = 0;
-      avisos.push(`años desempleado: no se entendió «${String(g(r, "aniosDesempleado") ?? "").trim() || "vacío"}», se registró 0`);
-    }
+    // Años: si no se entienden o están fuera de 0 a 60 NO se inventa un valor: el campo queda vacío, se avisa y
+    // esa respuesta simplemente no entra en el análisis de ese campo.
+    const entender = (campo) => {
+      const crudo = g(r, campo);
+      if (crudo == null || String(crudo).trim() === "") return;
+      const x = aniosDe(crudo);
+      if (x != null && x >= 0 && x <= 60) t[campo] = x;
+      else avisos.push(`${NOMBRE[campo]}: no se entendió «${String(crudo).trim()}», queda sin dato`);
+    };
+    entender("aniosProfesionales");
+    entender("aniosDesempleado");
 
     const mp = (campo, extra) => {
       const v = multiplePorSeparador("titulados", campo, g(r, campo), extra);
@@ -358,14 +371,15 @@ function mapearTitulados(aoa) {
     const fecha = fechaIso(g(r, "fin"));
     if (fecha) t.registrado = fecha;
 
-    // Validaciones propias de la importación
-    const faltan = OBLIGATORIOS_T.filter((c) => t[c] == null || t[c] === "");
-    if (faltan.length) return omitidas.push({ fila, correo: t.email, motivo: "Falta: " + faltan.map((c) => NOMBRE[c] || c).join(", ") + "." });
-    if (t.aniosDesempleado > t.aniosProfesionales)
-      return omitidas.push({ fila, correo: t.email, motivo: "Los años desempleado superan los años de vida profesional." });
+    // Única causa de omisión: el mismo correo REAL repetido dentro del archivo (duplicado).
+    // Una respuesta incompleta o incoherente se importa igual y solo se avisa; cada campo vacío queda fuera del análisis.
     if (correos.has(t.email))
-      return omitidas.push({ fila, correo: t.email, motivo: `Correo repetido: ya lo usó la fila ${correos.get(t.email)} de este archivo.` });
+      return omitidas.push({ fila, correo: t.email, motivo: `Duplicado: el correo ya lo usó la fila ${correos.get(t.email)} de este archivo.` });
     correos.set(t.email, fila);
+    const faltan = OBLIGATORIOS_T.filter((c) => t[c] == null || t[c] === "");
+    if (faltan.length) avisos.push("sin respuesta en: " + faltan.map((c) => NOMBRE[c] || c).join(", "));
+    if (t.aniosDesempleado > t.aniosProfesionales)
+      avisos.push("incoherente: los años desempleado superan los años de vida profesional (se importa y se cuenta como incoherencia)");
     if (usaInterno) avisos.push("sin correo válido: se usó un identificador interno");
     filas.push({ fila, correo: t.email, avisos, datos: t });
   });
@@ -424,11 +438,12 @@ function mapearEmpleadores(aoa) {
     const fecha = fechaIso(g(r, "fecha"));
     if (fecha) e.registrado = fecha;
 
-    const faltan = OBLIGATORIOS_E.filter((c) => e[c] == null || e[c] === "");
-    if (faltan.length) return omitidas.push({ fila, correo: e.email, motivo: "Falta: " + faltan.map((c) => NOMBRE[c] || c).join(", ") + "." });
+    // Igual que en titulados: solo se omite el correo real repetido; lo incompleto se importa y se avisa.
     if (correos.has(e.email))
-      return omitidas.push({ fila, correo: e.email, motivo: `Correo repetido: ya lo usó la fila ${correos.get(e.email)} de este archivo.` });
+      return omitidas.push({ fila, correo: e.email, motivo: `Duplicado: el correo ya lo usó la fila ${correos.get(e.email)} de este archivo.` });
     correos.set(e.email, fila);
+    const faltan = OBLIGATORIOS_E.filter((c) => e[c] == null || e[c] === "");
+    if (faltan.length) avisos.push("sin respuesta en: " + faltan.map((c) => NOMBRE[c] || c).join(", "));
     if (usaInterno) avisos.push("sin correo válido: se usó un identificador interno");
     filas.push({ fila, correo: e.email, avisos, datos: e });
   });

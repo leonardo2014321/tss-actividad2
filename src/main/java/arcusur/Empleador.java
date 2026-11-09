@@ -6,6 +6,9 @@ import jakarta.validation.constraints.*;
 /**
  * Respuesta de un empleador a la encuesta sobre los titulados de Ingeniería de Sistemas.
  * Cada objeto es una fila de la tabla {@code empleador}.
+ *
+ * Las reglas @NotBlank y @NotNull las exige el formulario web; las respuestas importadas desde Excel se guardan aunque
+ * falte algún campo (queda null y no entra en el análisis de ese campo; el panel de calidad lo cuenta).
  */
 @Entity
 @Table(name = "empleador", uniqueConstraints = @UniqueConstraint(name = "uk_empleador_email", columnNames = "email"))
